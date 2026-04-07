@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(command -v docker)",
+      "Bash(command -v podman)",
+      "Bash(command -v colima)"
+    ]
+  }
+}

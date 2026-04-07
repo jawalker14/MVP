@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+**/dist/
+
+# Environment
+.env
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes
+postgres_data/
+
+# Uploads (user-generated content)
+server/uploads/
+
+# PWA generated service worker files
+**/public/sw.js
+**/public/workbox-*.js

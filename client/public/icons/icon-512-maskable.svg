@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Full bleed background for maskable safe zone -->
+  <rect width="512" height="512" fill="#0c0f1a"/>
+  <!-- Content fits within the central 80% safe zone (roughly 400x400 centered) -->
+  <text x="256" y="310" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="170" fill="#e8b931">IK</text>
+</svg>
