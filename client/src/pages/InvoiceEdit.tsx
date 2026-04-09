@@ -46,6 +46,7 @@ type EditAction =
 
 interface InvoiceDetail {
   id: string
+  clientId: string | null
   invoiceNumber: string
   type: string
   status: string
@@ -570,10 +571,17 @@ export default function InvoiceEdit() {
 
   const handleSave = useCallback(async () => {
     if (!id || !invoiceData) return
+
+    const clientId = invoiceData.clientId ?? invoiceData.client?.id ?? null
+    if (!clientId) {
+      showToast('Cannot save: the client for this invoice no longer exists', 'error')
+      return
+    }
+
     dispatch({ type: 'SET_SUBMITTING', value: true })
     try {
       await api.put(`/api/invoices/${id}`, {
-        clientId: invoiceData.client?.id ?? invoiceData.id,
+        clientId,
         type: state.type,
         vatEnabled: state.vat_enabled,
         dueDate: state.due_date ?? null,

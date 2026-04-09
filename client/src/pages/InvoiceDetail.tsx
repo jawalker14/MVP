@@ -121,14 +121,21 @@ export default function InvoiceDetail() {
 
   async function handleSend(via: 'whatsapp' | 'email') {
     if (!id || actionLoading) return
+
+    // Email delivery is not yet configured — surface a clear message instead of
+    // silently marking the invoice "sent" with no email ever dispatched.
+    if (via === 'email') {
+      setMenuOpen(false)
+      showToast('Email delivery coming soon — use WhatsApp for now.', 'error')
+      return
+    }
+
     setActionLoading(true)
     setMenuOpen(false)
     try {
       const { data } = await api.post<{ whatsapp_url?: string }>(`/api/invoices/${id}/send`, { via })
-      if (via === 'whatsapp' && data.whatsapp_url) {
+      if (data.whatsapp_url) {
         window.open(data.whatsapp_url, '_blank')
-      } else {
-        showToast('Invoice sent via email', 'success')
       }
       await fetchInvoice()
     } catch (err: unknown) {
@@ -263,7 +270,7 @@ export default function InvoiceDetail() {
     menuItems.push(
       { label: 'Edit', onClick: () => navigate(`/invoices/${id}/edit`) },
       { label: 'Send via WhatsApp', onClick: () => handleSend('whatsapp') },
-      { label: 'Send via Email', onClick: () => handleSend('email') },
+      { label: 'Email (coming soon)', onClick: () => handleSend('email') },
     )
   } else if (status === 'sent' || status === 'viewed' || status === 'overdue') {
     menuItems.push(
@@ -498,11 +505,10 @@ export default function InvoiceDetail() {
             </button>
             <button
               onClick={() => handleSend('email')}
-              disabled={actionLoading}
-              className="w-full h-12 bg-transparent border border-border text-text-primary rounded-xl flex items-center justify-center gap-2 active:opacity-70 disabled:opacity-60"
+              className="w-full h-12 bg-transparent border border-border text-text-muted rounded-xl flex items-center justify-center gap-2 active:opacity-70"
             >
               <Mail className="w-4 h-4" />
-              Send via Email
+              Email (coming soon)
             </button>
           </>
         )}

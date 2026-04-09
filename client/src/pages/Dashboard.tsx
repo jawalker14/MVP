@@ -31,7 +31,7 @@ export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  const greeting = user?.businessName?.split(' ')[0] ?? 'there'
+  const greeting = user?.businessName?.split(' ')[0] || 'there'
 
   const { data: summary, loading: summaryLoading } =
     useApi<DashboardSummary>('/api/dashboard/summary')

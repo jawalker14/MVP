@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Lock, CheckCircle, Download } from 'lucide-react'
+import { formatZAR } from '../utils/formatZAR'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -14,14 +15,6 @@ function formatDate(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00')
   return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
-}
-
-function formatZAR(amount: number): string {
-  const fixed = Math.abs(amount).toFixed(2)
-  const [integer, cents] = fixed.split('.')
-  const withThousands = integer!.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-  const formatted = `R ${withThousands}.${cents}`
-  return amount < 0 ? `-${formatted}` : formatted
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,6 +49,7 @@ interface PublicInvoice {
   } | null
   business: {
     businessName: string | null
+    logoUrl: string | null
     addressLine1: string | null
     addressLine2: string | null
     city: string | null
@@ -163,12 +157,21 @@ export default function InvoicePublic() {
 
       {/* ── Gold header bar ── */}
       <div className="flex items-center gap-3 px-4 py-4" style={{ backgroundColor: '#e8b931' }}>
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0"
-          style={{ backgroundColor: 'rgba(255,255,255,0.25)', color: '#fff' }}
-        >
-          IK
-        </div>
+        {invoice.business?.logoUrl ? (
+          <img
+            src={`${API_URL}${invoice.business.logoUrl}`}
+            alt={businessName}
+            className="w-8 h-8 rounded-lg object-cover shrink-0"
+            style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}
+          />
+        ) : (
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0"
+            style={{ backgroundColor: 'rgba(255,255,255,0.25)', color: '#fff' }}
+          >
+            IK
+          </div>
+        )}
         <p className="font-bold text-gray-900 text-base truncate">{businessName}</p>
       </div>
 

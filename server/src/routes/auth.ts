@@ -32,6 +32,7 @@ const CompleteOnboardingSchema = z.object({
 
 const RefreshSchema = z.object({
   refreshToken: z.string().min(1),
+  userId: z.string().uuid().optional(),
 })
 
 const LogoutSchema = z.object({
@@ -200,14 +201,18 @@ router.post(
 // ─── POST /api/auth/refresh ───────────────────────────────────────────────────
 
 router.post('/refresh', validateBody(RefreshSchema), async (req, res) => {
-  const { refreshToken } = req.body as z.infer<typeof RefreshSchema>
+  const { refreshToken, userId } = req.body as z.infer<typeof RefreshSchema>
 
-  // Load all non-expired tokens and bcrypt-compare (can't hash-query bcrypt)
+  // Prune globally expired tokens on each refresh — keeps the table lean
+  await db.delete(refreshTokens).where(sql`expires_at < now()`)
+
+  // Load non-expired tokens. When userId is provided (sent by the client), scope
+  // the query to that user — avoids scanning every token in the table.
+  const baseCondition = gt(refreshTokens.expiresAt, new Date())
   const active = await db
     .select()
     .from(refreshTokens)
-    .where(gt(refreshTokens.expiresAt, new Date()))
-    .limit(100)
+    .where(userId ? and(baseCondition, eq(refreshTokens.userId, userId)) : baseCondition)
 
   let matched: (typeof active)[0] | undefined
   for (const rt of active) {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode, SyntheticEvent, ChangeEvent } from 'react'
 import { Camera, LogOut } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import ConfirmModal from '../components/ConfirmModal'
@@ -38,7 +39,7 @@ const FREE_CLIENT_LIMIT = 5
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children }: { children: ReactNode }) {
   return (
     <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-3">
       {children}
@@ -53,7 +54,7 @@ function Field({
 }: {
   label: string
   helper?: string
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -139,6 +140,21 @@ export default function Settings() {
 
   // ── Account ───────────────────────────────────────────────────────────────
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [logoutLoading, setLogoutLoading] = useState(false)
+
+  async function handleLogout() {
+    setLogoutLoading(true)
+    const refreshToken = localStorage.getItem('refreshToken')
+    try {
+      if (refreshToken) {
+        await api.post('/api/auth/logout', { refreshToken })
+      }
+    } catch {
+      // Always log out client-side even if server call fails
+    } finally {
+      logout()
+    }
+  }
 
   // Sync form fields when user changes (e.g. after first load)
   useEffect(() => {
@@ -195,7 +211,7 @@ export default function Settings() {
     })
   }
 
-  async function handleBizSave(e: React.SyntheticEvent) {
+  async function handleBizSave(e: SyntheticEvent) {
     e.preventDefault()
     setBizSaving(true)
     try {
@@ -212,7 +228,7 @@ export default function Settings() {
     }
   }
 
-  async function handleAddrSave(e: React.SyntheticEvent) {
+  async function handleAddrSave(e: SyntheticEvent) {
     e.preventDefault()
     setAddrSaving(true)
     try {
@@ -231,7 +247,7 @@ export default function Settings() {
     }
   }
 
-  async function handleBankSave(e: React.SyntheticEvent) {
+  async function handleBankSave(e: SyntheticEvent) {
     e.preventDefault()
     setBankSaving(true)
     try {
@@ -248,7 +264,7 @@ export default function Settings() {
     }
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -545,9 +561,9 @@ export default function Settings() {
         <ConfirmModal
           title="Log out?"
           message="You'll need to use a magic link to sign back in."
-          confirmLabel="Log Out"
+          confirmLabel={logoutLoading ? 'Logging out…' : 'Log Out'}
           confirmVariant="danger"
-          onConfirm={logout}
+          onConfirm={handleLogout}
           onCancel={() => setShowLogoutConfirm(false)}
         />
       )}
