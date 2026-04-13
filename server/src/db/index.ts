@@ -12,7 +12,11 @@ if (!connectionString) {
 }
 
 // Use a connection pool for the application
-const queryClient = postgres(connectionString, { max: 10 })
+const queryClient = postgres(connectionString, {
+  max: 10,
+  connect_timeout: 10, // seconds — fail fast if DB is unreachable
+  idle_timeout: 20,    // seconds — release idle connections quickly
+})
 
 export const db = drizzle(queryClient, { schema })
 export type DB = typeof db

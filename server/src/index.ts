@@ -16,7 +16,7 @@ import dashboardRouter from './routes/dashboard'
 import webhooksRouter from './routes/webhooks'
 
 const app = express()
-const PORT = process.env.PORT ?? 3001
+const PORT = parseInt(process.env.PORT || '3001', 10)
 const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:5173'
 const IS_PROD = process.env.NODE_ENV === 'production'
 
@@ -119,8 +119,22 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
-  console.log(`InvoiceKasi API running on http://localhost:${PORT}`)
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`InvoiceKasi API running on http://0.0.0.0:${PORT}`)
+})
+
+// Graceful shutdown — Railway sends SIGTERM before cycling a container
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received — closing HTTP server')
+  server.close(() => {
+    console.log('HTTP server closed')
+    process.exit(0)
+  })
+})
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason)
+  process.exit(1)
 })
 
 export default app
