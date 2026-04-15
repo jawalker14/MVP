@@ -12,7 +12,6 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "typescript": "^5.8.3",
     "@types/multer": "^2.1.0",
     "@types/pdfkit": "^0.17.5",
     "bcrypt": "^5.1.1",
@@ -26,6 +25,8 @@
     "multer": "^2.1.1",
     "pdfkit": "^0.18.0",
     "postgres": "^3.4.5",
+    "resend": "^6.11.0",
+    "typescript": "^5.8.3",
     "zod": "^3.24.3"
   },
   "devDependencies": {

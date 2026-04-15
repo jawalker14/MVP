@@ -1,5 +1,8 @@
 import axios from 'axios'
 
+// IMPORTANT: Set VITE_API_URL in your Vercel environment variables to point to your Railway backend.
+// Example: VITE_API_URL=https://invoicekasi-production.up.railway.app
+// Without this, the client will try to connect to localhost:3001 in production.
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 // Module-level state — injected by AuthContext to avoid circular imports

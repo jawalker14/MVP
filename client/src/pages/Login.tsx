@@ -7,6 +7,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+  const [devLink, setDevLink] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -15,7 +16,10 @@ export default function Login() {
     setError('')
 
     try {
-      await api.post('/api/auth/request-magic-link', { email })
+      const res = await api.post('/api/auth/request-magic-link', { email })
+      if (import.meta.env.DEV && res.data?.dev_link) {
+        setDevLink(res.data.dev_link)
+      }
       setSent(true)
     } catch (err: unknown) {
       const msg =
@@ -49,6 +53,12 @@ export default function Login() {
             <p className="text-text-primary font-medium">
               Check your email! We sent you a login link.
             </p>
+            {import.meta.env.DEV && devLink && (
+              <div className="mt-4 p-4 bg-surface rounded-xl border border-accent/30 text-left w-full">
+                <p className="text-text-muted text-xs mb-2">Dev mode — click to verify:</p>
+                <a href={devLink} className="text-accent text-sm break-all underline">{devLink}</a>
+              </div>
+            )}
           </div>
         ) : (
           /* ── Form ── */

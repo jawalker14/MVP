@@ -5,6 +5,7 @@ import fs from 'fs'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import multer from 'multer'
+import { Resend } from 'resend'
 import { db } from '../db'
 import { users, magicLinks, refreshTokens } from '../db/schema'
 import { validateBody } from '../middleware/validate'
@@ -81,6 +82,8 @@ router.post(
       .from(magicLinks)
       .where(and(eq(magicLinks.email, email), gte(magicLinks.createdAt, windowStart)))
 
+    let devLink: string | undefined
+
     if (count < MAGIC_LINK_RATE_LIMIT) {
       const raw = crypto.randomBytes(32).toString('hex')
       const tokenHash = sha256(raw)
@@ -90,11 +93,42 @@ router.post(
 
       const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173'
       const magicLinkUrl = `${clientUrl}/auth/verify?token=${raw}&email=${encodeURIComponent(email)}`
+
+      // Always log as a fallback
       console.log(`\n🔗 MAGIC LINK for ${email}:\n${magicLinkUrl}\n`)
+
+      // Send real email via Resend if API key is configured
+      const resendKey = process.env.RESEND_API_KEY
+      if (resendKey) {
+        try {
+          const resend = new Resend(resendKey)
+          await resend.emails.send({
+            from: 'InvoiceKasi <hello@invoicekasi.co.za>',
+            to: email,
+            subject: 'Your InvoiceKasi login link',
+            html: `
+              <h2>Sign in to InvoiceKasi</h2>
+              <p>Click the button below to sign in. This link expires in 15 minutes.</p>
+              <a href="${magicLinkUrl}" style="background:#e8b931;color:#0c0f1a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Sign In to InvoiceKasi</a>
+              <p style="color:#94a3b8;font-size:12px;margin-top:24px;">If you didn't request this, you can safely ignore this email.</p>
+            `,
+          })
+        } catch (err) {
+          console.error('Resend email failed:', err)
+          // Don't block the user — fall through to 200 response
+        }
+      }
+
+      if (process.env.NODE_ENV === 'development') {
+        devLink = magicLinkUrl
+      }
     }
 
     // Always 200 — never reveal whether email exists or rate limit hit
-    res.json({ message: 'Magic link sent' })
+    res.json({
+      message: 'Magic link sent',
+      ...(devLink ? { dev_link: devLink } : {}),
+    })
   },
 )
 
