@@ -75,6 +75,13 @@ router.post(
   async (req, res) => {
     const { email } = req.body as z.infer<typeof RequestMagicLinkSchema>
 
+    const resendKey = process.env.RESEND_API_KEY
+    if (process.env.NODE_ENV === 'production' && !resendKey) {
+      console.error('RESEND_API_KEY not configured — cannot send magic link in production')
+      res.status(503).json({ error: 'Email service not configured. Please contact support.' })
+      return
+    }
+
     // Per-email rate limit: max 3 requests per 15-minute window
     const windowStart = new Date(Date.now() - MAGIC_LINK_TTL_MS)
     const [{ count }] = await db
@@ -98,7 +105,6 @@ router.post(
       console.log(`\n🔗 MAGIC LINK for ${email}:\n${magicLinkUrl}\n`)
 
       // Send real email via Resend if API key is configured
-      const resendKey = process.env.RESEND_API_KEY
       if (resendKey) {
         try {
           const resend = new Resend(resendKey)
@@ -420,6 +426,15 @@ router.post(
     res.json({ logo_url: logoUrl })
   },
 )
+
+// ─── GET /api/auth/config ─────────────────────────────────────────────────────
+
+router.get('/config', (_req, res) => {
+  res.json({
+    emailEnabled: Boolean(process.env.RESEND_API_KEY),
+    yocoEnabled: Boolean(process.env.YOCO_SECRET_KEY),
+  })
+})
 
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Loader2, Mail } from 'lucide-react'
 import api from '../api/client'
 
@@ -12,6 +12,15 @@ export default function Login() {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
   const [devLink, setDevLink] = useState<string | null>(null)
+  const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    api.get('/api/auth/config').then((res) => {
+      setEmailEnabled(res.data.emailEnabled)
+    }).catch(() => {
+      // If config fetch fails, don't block login — assume email is enabled
+    })
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -41,6 +50,11 @@ export default function Login() {
       {!apiUrl && (
         <div className="fixed top-0 left-0 right-0 bg-yellow-400 text-yellow-900 text-xs font-medium text-center py-2 px-4 z-50">
           Warning: VITE_API_URL is not set — requests will fall back to localhost:3001. Set this in your Vercel environment variables.
+        </div>
+      )}
+      {emailEnabled === false && (
+        <div className="fixed top-0 left-0 right-0 bg-orange-500 text-white text-xs font-medium text-center py-2 px-4 z-50">
+          ⚠️ Email delivery is not configured on this server. Contact the admin.
         </div>
       )}
       <div className="w-full max-w-sm">
