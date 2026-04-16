@@ -3,6 +3,10 @@ import { Loader2, Mail } from 'lucide-react'
 import api from '../api/client'
 
 export default function Login() {
+  const apiUrl = import.meta.env.VITE_API_URL
+  // In development, show a warning if the API URL looks like localhost in a non-local context
+  // This is just a dev helper — remove before final launch
+
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
@@ -34,6 +38,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-primary flex flex-col items-center justify-center px-6">
+      {!apiUrl && (
+        <div className="fixed top-0 left-0 right-0 bg-yellow-400 text-yellow-900 text-xs font-medium text-center py-2 px-4 z-50">
+          Warning: VITE_API_URL is not set — requests will fall back to localhost:3001. Set this in your Vercel environment variables.
+        </div>
+      )}
       <div className="w-full max-w-sm">
         {/* Brand mark */}
         <div className="flex flex-col items-center mb-8">
