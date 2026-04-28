@@ -20,6 +20,8 @@ export default function Verify() {
       return
     }
 
+    window.history.replaceState({}, '', '/auth/verify')
+
     api
       .post('/api/auth/verify-magic-link', { token, email })
       .then(({ data }) => {

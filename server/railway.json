@@ -2,12 +2,13 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install --include=dev && npm run build"
+    "buildCommand": "npm ci --include=dev && npm run build"
   },
   "deploy": {
-    "startCommand": "node dist/db/migrate.js && node dist/index.js",
+    "preDeployCommand": "npm run db:migrate:prod",
+    "startCommand": "npm run start",
     "healthcheckPath": "/api/health",
-    "healthcheckTimeout": 60,
+    "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

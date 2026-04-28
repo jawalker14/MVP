@@ -15,9 +15,82 @@ import invoicesRouter from './routes/invoices'
 import dashboardRouter from './routes/dashboard'
 import webhooksRouter from './routes/webhooks'
 
+const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'CLIENT_URL'] as const
+
+function validateEnv(): void {
+  const isProd = process.env.NODE_ENV === 'production'
+  let missing = 0
+
+  for (const name of REQUIRED_ENV) {
+    if (!process.env[name]) {
+      if (isProd) {
+        console.error(`❌ MISSING_ENV: ${name}`)
+        missing++
+      } else {
+        console.warn(`⚠️  Missing env: ${name}`)
+      }
+    }
+  }
+
+  if (isProd && missing > 0) {
+    console.error(`Server refused to start: ${missing} required env var(s) missing`)
+    process.exit(1)
+  }
+
+  const secret = process.env.JWT_SECRET
+  if (isProd && secret !== undefined) {
+    if (secret.length < 32) {
+      console.error('❌ JWT_SECRET must be at least 32 characters in production')
+      process.exit(1)
+    }
+    if (secret === 'change-me-in-production-min-32-chars') {
+      console.error('❌ JWT_SECRET is still the .env.example placeholder — set a real secret')
+      process.exit(1)
+    }
+  }
+
+  console.log(`✓ Env validated (NODE_ENV=${process.env.NODE_ENV ?? 'development'})`)
+}
+
+validateEnv()
+
+// ─── CORS allow-list (computed once at module scope) ─────────────────────────
+
+const corsStaticOrigins = new Set(
+  [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean) as string[],
+)
+
+const vercelPrefixPattern: RegExp | null = (() => {
+  const prefix = process.env.VERCEL_PROJECT_PREFIX
+  if (!prefix) return null
+  const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Matches: {prefix}.vercel.app  AND  {prefix}-<branch-or-hash>.vercel.app
+  return new RegExp(
+    `^https://${esc}(-[a-z0-9-]+)?-[a-z0-9-]+\\.vercel\\.app$|^https://${esc}\\.vercel\\.app$`,
+  )
+})()
+
+// Smoke-test — eyeball these logs then remove this block
+{
+  const prefix = process.env.VERCEL_PROJECT_PREFIX ?? 'my-project'
+  const cases: [string | undefined, string][] = [
+    [undefined, 'no origin (server-to-server)'],
+    [`https://${prefix}.vercel.app`, 'prod URL'],
+    [`https://${prefix}-abc123-team.vercel.app`, 'preview URL'],
+    ['https://evil-other-prefix.vercel.app', 'other Vercel project'],
+    ['https://evil.com', 'random origin'],
+  ]
+  for (const [origin, label] of cases) {
+    const allowed =
+      !origin ||
+      corsStaticOrigins.has(origin) ||
+      (vercelPrefixPattern !== null && vercelPrefixPattern.test(origin))
+    console.log(`CORS smoke-test [${label}]: ${allowed ? 'ALLOWED' : 'REJECTED'} — ${origin ?? '(none)'}`)
+  }
+}
+
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001', 10)
-const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:5173'
 const IS_PROD = process.env.NODE_ENV === 'production'
 
 // ─── Trust proxy (Render/Railway sit behind a load balancer) ─────────────────
@@ -47,18 +120,11 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      const allowed = [
-        process.env.CLIENT_URL,
-        'http://localhost:5173',
-        'http://localhost:3000',
-      ].filter(Boolean)
-
-      // Allow Vercel preview deployments
-      if (!origin || allowed.includes(origin) || origin.endsWith('.vercel.app')) {
-        callback(null, true)
-      } else {
-        callback(new Error('Not allowed by CORS'))
-      }
+      const allowed =
+        !origin ||
+        corsStaticOrigins.has(origin) ||
+        (vercelPrefixPattern !== null && vercelPrefixPattern.test(origin))
+      allowed ? callback(null, true) : callback(new Error('Not allowed by CORS'))
     },
     credentials: true,
   }),

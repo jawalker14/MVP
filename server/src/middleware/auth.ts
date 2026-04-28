@@ -20,11 +20,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
 
   const token = authHeader.slice(7)
-  const secret = process.env.JWT_SECRET
-  if (!secret) {
-    res.status(500).json({ error: 'Server misconfiguration' })
-    return
-  }
+  const secret = process.env.JWT_SECRET!
 
   try {
     const payload = jwt.verify(token, secret) as JwtPayload

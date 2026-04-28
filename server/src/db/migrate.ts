@@ -6,14 +6,19 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
 
-async function runMigrations() {
-  const connectionString = process.env.DATABASE_URL
-  if (!connectionString) {
+export async function runMigrations(): Promise<void> {
+  const DATABASE_URL = process.env.DATABASE_URL
+  if (!DATABASE_URL) {
     throw new Error('DATABASE_URL environment variable is required')
   }
 
-  // Migration client — single connection, no pool
-  const migrationClient = postgres(connectionString, { max: 1 })
+  const isProduction = process.env.NODE_ENV === 'production'
+  const isPooler = DATABASE_URL.includes('pooler') || DATABASE_URL.includes('pgbouncer')
+
+  const ssl = isProduction ? 'require' : false
+  const prepare = !isPooler
+
+  const migrationClient = postgres(DATABASE_URL, { ssl, prepare, max: 1 })
   const db = drizzle(migrationClient)
 
   console.log('Running migrations...')
@@ -23,10 +28,11 @@ async function runMigrations() {
   console.log('Migrations complete.')
 
   await migrationClient.end()
-  process.exit(0)
 }
 
-runMigrations().catch((err) => {
-  console.error('Migration failed:', err)
-  process.exit(1)
-})
+if (require.main === module) {
+  runMigrations().then(() => process.exit(0)).catch((err) => {
+    console.error('Migration failed:', err)
+    process.exit(1)
+  })
+}

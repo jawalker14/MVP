@@ -9,12 +9,13 @@
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "ts-node --transpile-only src/db/migrate.ts",
+    "db:migrate:prod": "node dist/db/migrate.js",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",
     "@types/pdfkit": "^0.17.5",
-    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.43.1",
@@ -30,7 +31,6 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/jsonwebtoken": "^9.0.9",

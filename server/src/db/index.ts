@@ -6,17 +6,26 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from './schema'
 
-const connectionString = process.env.DATABASE_URL
-if (!connectionString) {
+const DATABASE_URL = process.env.DATABASE_URL
+if (!DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is required')
 }
 
-// Use a connection pool for the application
-const queryClient = postgres(connectionString, {
+const isProduction = process.env.NODE_ENV === 'production'
+const isPooler = DATABASE_URL.includes('pooler') || DATABASE_URL.includes('pgbouncer')
+
+const ssl = isProduction ? 'require' : false
+const prepare = !isPooler
+
+const queryClient = postgres(DATABASE_URL, {
+  ssl,
+  prepare,
   max: 10,
-  connect_timeout: 10, // seconds — fail fast if DB is unreachable
-  idle_timeout: 20,    // seconds — release idle connections quickly
+  connect_timeout: 10,
+  idle_timeout: 20,
 })
+
+console.log(`DB pool ready (ssl=${isProduction}, prepare=${prepare})`)
 
 export const db = drizzle(queryClient, { schema })
 export type DB = typeof db
