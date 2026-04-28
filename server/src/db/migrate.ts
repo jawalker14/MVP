@@ -33,6 +33,12 @@ export async function runMigrations(): Promise<void> {
 if (require.main === module) {
   runMigrations().then(() => process.exit(0)).catch((err) => {
     console.error('Migration failed:', err)
+    console.error('DATABASE_URL set:', !!process.env.DATABASE_URL)
+    console.error('NODE_ENV:', process.env.NODE_ENV)
+    if (err instanceof Error) {
+      console.error('Error message:', err.message)
+      console.error('Error stack:', err.stack)
+    }
     process.exit(1)
   })
 }
