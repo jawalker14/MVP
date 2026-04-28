@@ -56,6 +56,7 @@ export const refreshTokens = pgTable('refresh_tokens', {
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  tokenId: varchar('token_id', { length: 40 }).notNull().unique(),
   tokenHash: varchar('token_hash', { length: 255 }).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`),
@@ -136,6 +137,13 @@ export const lineItems = pgTable('line_items', {
   lineTotal: numeric('line_total', { precision: 12, scale: 2 }).notNull(),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`),
+})
+
+// ─── webhook_events ───────────────────────────────────────────────────────────
+
+export const webhookEvents = pgTable('webhook_events', {
+  id: varchar('id', { length: 255 }).primaryKey(), // webhook-id header from Yoco
+  processedAt: timestamp('processed_at', { withTimezone: true }).default(sql`now()`),
 })
 
 // ─── Types ────────────────────────────────────────────────────────────────────

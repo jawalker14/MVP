@@ -33,7 +33,6 @@ const CompleteOnboardingSchema = z.object({
 
 const RefreshSchema = z.object({
   refreshToken: z.string().min(1),
-  userId: z.string().uuid().optional(),
 })
 
 const LogoutSchema = z.object({
@@ -60,11 +59,12 @@ function signAccessToken(userId: string, email: string, plan: string): string {
 }
 
 async function issueRefreshToken(userId: string): Promise<string> {
-  const raw = crypto.randomBytes(40).toString('hex')
-  const hash = await bcrypt.hash(raw, 10)
+  const tokenId = crypto.randomUUID()
+  const secret = crypto.randomBytes(40).toString('hex')
+  const hash = await bcrypt.hash(secret, 10)
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS)
-  await db.insert(refreshTokens).values({ userId, tokenHash: hash, expiresAt })
-  return raw
+  await db.insert(refreshTokens).values({ userId, tokenId, tokenHash: hash, expiresAt })
+  return `${tokenId}.${secret}`
 }
 
 // ─── POST /api/auth/request-magic-link ───────────────────────────────────────
@@ -241,36 +241,32 @@ router.post(
 // ─── POST /api/auth/refresh ───────────────────────────────────────────────────
 
 router.post('/refresh', validateBody(RefreshSchema), async (req, res) => {
-  const { refreshToken, userId } = req.body as z.infer<typeof RefreshSchema>
+  const { refreshToken } = req.body as z.infer<typeof RefreshSchema>
 
-  // Prune globally expired tokens on each refresh — keeps the table lean
-  await db.delete(refreshTokens).where(sql`expires_at < now()`)
+  const dot = refreshToken.indexOf('.')
+  const tokenId = dot !== -1 ? refreshToken.slice(0, dot) : ''
+  const secret = dot !== -1 ? refreshToken.slice(dot + 1) : ''
 
-  // Load non-expired tokens. When userId is provided (sent by the client), scope
-  // the query to that user — avoids scanning every token in the table.
-  const baseCondition = gt(refreshTokens.expiresAt, new Date())
-  const active = await db
-    .select()
-    .from(refreshTokens)
-    .where(userId ? and(baseCondition, eq(refreshTokens.userId, userId)) : baseCondition)
-
-  let matched: (typeof active)[0] | undefined
-  for (const rt of active) {
-    if (await bcrypt.compare(refreshToken, rt.tokenHash)) {
-      matched = rt
-      break
-    }
+  if (!tokenId || !secret) {
+    res.status(401).json({ error: 'Invalid or expired refresh token' })
+    return
   }
 
-  if (!matched) {
+  const [row] = await db
+    .select()
+    .from(refreshTokens)
+    .where(and(eq(refreshTokens.tokenId, tokenId), gt(refreshTokens.expiresAt, new Date())))
+    .limit(1)
+
+  if (!row || !(await bcrypt.compare(secret, row.tokenHash))) {
     res.status(401).json({ error: 'Invalid or expired refresh token' })
     return
   }
 
   // Token rotation: delete old before issuing new
-  await db.delete(refreshTokens).where(eq(refreshTokens.id, matched.id))
+  await db.delete(refreshTokens).where(eq(refreshTokens.id, row.id))
 
-  const [user] = await db.select().from(users).where(eq(users.id, matched.userId)).limit(1)
+  const [user] = await db.select().from(users).where(eq(users.id, row.userId)).limit(1)
   if (!user) {
     res.status(401).json({ error: 'Invalid or expired refresh token' })
     return
@@ -287,17 +283,13 @@ router.post('/refresh', validateBody(RefreshSchema), async (req, res) => {
 router.post('/logout', requireAuth, validateBody(LogoutSchema), async (req: AuthRequest, res) => {
   const { refreshToken } = req.body as z.infer<typeof LogoutSchema>
 
-  const tokens = await db
-    .select()
-    .from(refreshTokens)
-    .where(eq(refreshTokens.userId, req.user!.sub))
-    .limit(20)
+  const dot = refreshToken.indexOf('.')
+  const tokenId = dot !== -1 ? refreshToken.slice(0, dot) : ''
 
-  for (const rt of tokens) {
-    if (await bcrypt.compare(refreshToken, rt.tokenHash)) {
-      await db.delete(refreshTokens).where(eq(refreshTokens.id, rt.id))
-      break
-    }
+  if (tokenId) {
+    await db
+      .delete(refreshTokens)
+      .where(and(eq(refreshTokens.tokenId, tokenId), eq(refreshTokens.userId, req.user!.sub)))
   }
 
   res.json({ message: 'Logged out' })

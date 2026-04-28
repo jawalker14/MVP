@@ -1,24 +1,90 @@
 import { Router, Request, Response } from 'express'
+import crypto from 'crypto'
 import { db } from '../db'
-import { invoices } from '../db/schema'
+import { invoices, webhookEvents } from '../db/schema'
 import { eq } from 'drizzle-orm'
 
 const router = Router()
 
 // ─── POST /api/webhooks/yoco ──────────────────────────────────────────────────
-// No auth — webhooks come from Yoco's servers.
-// Uses express.raw() body parser (mounted in index.ts) to preserve raw body
-// for future signature verification.
-//
-// TODO: Before going to production, implement Yoco webhook signature verification
-// using the webhook-signature header sent by Yoco.
+// Verification flow:
+//   1. Reject if any required signing headers are absent.
+//   2. Reject if the webhook-timestamp is older than 5 minutes (replay guard).
+//   3. Compute HMAC-SHA256 over "{webhook-id}.{webhook-timestamp}.{raw-body}"
+//      using the decoded key bytes from YOCO_WEBHOOK_SECRET (format: "whsec_<base64>").
+//   4. Compare against every "v1,<base64>" token in webhook-signature via
+//      timingSafeEqual; reject 401 if none match.
+//   5. Idempotency: INSERT ON CONFLICT DO NOTHING — skip re-processing duplicates.
+//   6. Parse body and handle the event.
 
 router.post('/yoco', async (req: Request, res: Response) => {
-  // Log headers for debugging / future signature verification
-  console.log('Yoco webhook headers:', JSON.stringify(req.headers, null, 2))
+  // ── 1. Require signing headers ────────────────────────────────────────────
+  const webhookId = req.headers['webhook-id'] as string | undefined
+  const timestamp = req.headers['webhook-timestamp'] as string | undefined
+  const sigHeader = req.headers['webhook-signature'] as string | undefined
 
+  if (!webhookId || !timestamp || !sigHeader) {
+    res.status(400).json({ error: 'Missing webhook signing headers' })
+    return
+  }
+
+  // ── 2. Replay prevention (5-minute window) ────────────────────────────────
+  const tsMs = parseInt(timestamp, 10) * 1000
+  if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) {
+    res.status(400).json({ error: 'Webhook timestamp out of acceptable range' })
+    return
+  }
+
+  // ── 3. Compute expected signature ─────────────────────────────────────────
+  // Yoco secrets are formatted as "whsec_<base64>"; the actual key material is
+  // the decoded bytes. We strip the prefix before decoding.
+  const rawSecret = process.env.YOCO_WEBHOOK_SECRET ?? ''
+  const b64Key = rawSecret.startsWith('whsec_') ? rawSecret.slice(6) : rawSecret
+  const secretBytes = Buffer.from(b64Key, 'base64')
+
+  const rawBody = req.body as Buffer
+  const signedPayload = `${webhookId}.${timestamp}.${rawBody.toString()}`
+  const expectedBytes = crypto
+    .createHmac('sha256', secretBytes)
+    .update(signedPayload)
+    .digest()
+
+  // ── 4. Verify against provided signatures ────────────────────────────────
+  // Header format: space-separated "v1,<base64sig>" tokens (supports key rotation)
+  const providedSigs = sigHeader
+    .split(' ')
+    .map((token) => token.split(',').slice(1).join(',')) // everything after the first comma
+    .filter(Boolean)
+
+  const expectedLen = expectedBytes.length
+  const verified = providedSigs.some((b64Sig) => {
+    const sigBytes = Buffer.from(b64Sig, 'base64')
+    if (sigBytes.length !== expectedLen) return false
+    return crypto.timingSafeEqual(expectedBytes, sigBytes)
+  })
+
+  if (!verified) {
+    res.status(401).json({ error: 'Invalid webhook signature' })
+    return
+  }
+
+  // ── 5. Idempotency check ──────────────────────────────────────────────────
+  const result = await db
+    .insert(webhookEvents)
+    .values({ id: webhookId })
+    .onConflictDoNothing()
+    .returning({ id: webhookEvents.id })
+
+  if (result.length === 0) {
+    // Already processed — acknowledge without re-running business logic
+    res.sendStatus(200)
+    return
+  }
+
+  // ── 6. Process event ──────────────────────────────────────────────────────
   try {
-    const body = JSON.parse((req.body as Buffer).toString())
+    const body = JSON.parse(rawBody.toString())
+    console.log(`Yoco webhook received: type=${body.type} id=${webhookId}`)
 
     if (body.type === 'payment.succeeded') {
       const invoiceId: string | undefined = body.payload?.metadata?.invoice_id

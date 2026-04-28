@@ -9,18 +9,16 @@ import {
   desc,
   gte,
   lte,
-  sql,
   count,
   getTableColumns,
 } from 'drizzle-orm'
+import { consumeInvoiceCredit, InvoiceLimitReachedError } from '../utils/freeTierGate'
 import { z } from 'zod'
 import { generateInvoiceNumber } from '../utils/invoiceNumber'
 import { formatZAR } from '../utils/formatZAR'
 import { generateInvoicePDF, PdfInvoiceData } from '../services/pdf'
 
 const router = Router()
-
-const FREE_INVOICE_LIMIT = 10
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -407,94 +405,67 @@ router.post('/', validateBody(InvoiceBodySchema), async (req: AuthRequest, res) 
     return
   }
 
-  // Free tier check
-  if (req.user!.plan === 'free') {
-    const [user] = await db
-      .select({
-        invoiceCountThisMonth: users.invoiceCountThisMonth,
-        invoiceCountResetAt: users.invoiceCountResetAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
-
-    const now = new Date()
-    const startOfCurrentMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-    let currentCount = user?.invoiceCountThisMonth ?? 0
-
-    // Reset counter if it's a new month
-    if (!user?.invoiceCountResetAt || user.invoiceCountResetAt < startOfCurrentMonth) {
-      await db
-        .update(users)
-        .set({ invoiceCountThisMonth: 0, invoiceCountResetAt: startOfCurrentMonth })
-        .where(eq(users.id, userId))
-      currentCount = 0
-    }
-
-    if (currentCount >= FREE_INVOICE_LIMIT) {
-      res.status(403).json({
-        error:
-          'Free plan limited to 10 invoices per month. Upgrade to Premium for unlimited invoicing.',
-        code: 'INVOICE_LIMIT_REACHED',
-      })
-      return
-    }
-  }
-
   const invoiceNumber = await generateInvoiceNumber(userId, body.type)
   const { subtotal, vatRate, vatAmount, total, lineTotals } = calcTotals(
     body.lineItems,
     body.vatEnabled,
   )
 
-  const result = await db.transaction(async (tx) => {
-    const [invoice] = await tx
-      .insert(invoices)
-      .values({
-        userId,
-        clientId: body.clientId,
-        invoiceNumber,
-        type: body.type,
-        vatRate: String(vatRate),
-        subtotal: String(subtotal),
-        vatAmount: String(vatAmount),
-        total: String(total),
-        dueDate: body.dueDate ?? null,
-        notes: body.notes ?? null,
+  try {
+    const result = await db.transaction(async (tx) => {
+      const credit = await consumeInvoiceCredit(tx, userId)
+      if (!credit.ok) throw new InvoiceLimitReachedError()
+
+      const [invoice] = await tx
+        .insert(invoices)
+        .values({
+          userId,
+          clientId: body.clientId,
+          invoiceNumber,
+          type: body.type,
+          vatRate: String(vatRate),
+          subtotal: String(subtotal),
+          vatAmount: String(vatAmount),
+          total: String(total),
+          dueDate: body.dueDate ?? null,
+          notes: body.notes ?? null,
+        })
+        .returning()
+
+      await tx.insert(lineItems).values(
+        body.lineItems.map((item, idx) => ({
+          invoiceId: invoice.id,
+          description: item.description,
+          quantity: String(item.quantity),
+          unitPrice: String(item.unitPrice),
+          lineTotal: String(lineTotals[idx]),
+          sortOrder: item.sortOrder ?? idx,
+        })),
+      )
+
+      return invoice
+    })
+
+    const items = await db
+      .select()
+      .from(lineItems)
+      .where(eq(lineItems.invoiceId, result.id))
+      .orderBy(lineItems.sortOrder)
+
+    res.status(201).json({
+      ...numericInvoice(result),
+      lineItems: items.map(numericLineItem),
+    })
+  } catch (err) {
+    if (err instanceof InvoiceLimitReachedError) {
+      res.status(403).json({
+        error: 'Free plan limited to 10 invoices per month. Upgrade to Premium for unlimited invoicing.',
+        code: 'INVOICE_LIMIT_REACHED',
       })
-      .returning()
-
-    await tx.insert(lineItems).values(
-      body.lineItems.map((item, idx) => ({
-        invoiceId: invoice.id,
-        description: item.description,
-        quantity: String(item.quantity),
-        unitPrice: String(item.unitPrice),
-        lineTotal: String(lineTotals[idx]),
-        sortOrder: item.sortOrder ?? idx,
-      })),
-    )
-
-    if (req.user!.plan === 'free') {
-      await tx
-        .update(users)
-        .set({ invoiceCountThisMonth: sql`invoice_count_this_month + 1` })
-        .where(eq(users.id, userId))
+      return
     }
-
-    return invoice
-  })
-
-  const items = await db
-    .select()
-    .from(lineItems)
-    .where(eq(lineItems.invoiceId, result.id))
-    .orderBy(lineItems.sortOrder)
-
-  res.status(201).json({
-    ...numericInvoice(result),
-    lineItems: items.map(numericLineItem),
-  })
+    throw err
+  }
 })
 
 // ─── PUT /api/invoices/:id ────────────────────────────────────────────────────
@@ -743,58 +714,31 @@ router.post('/:id/convert', async (req: AuthRequest, res) => {
     return
   }
 
-  // Free tier check — converting a quote counts as creating a new invoice
-  if (req.user!.plan === 'free') {
-    const [user] = await db
-      .select({
-        invoiceCountThisMonth: users.invoiceCountThisMonth,
-        invoiceCountResetAt: users.invoiceCountResetAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
+  const invoiceNumber = await generateInvoiceNumber(userId, 'invoice')
 
-    const now = new Date()
-    const startOfCurrentMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-    let currentCount = user?.invoiceCountThisMonth ?? 0
+  try {
+    const [updated] = await db.transaction(async (tx) => {
+      const credit = await consumeInvoiceCredit(tx, userId)
+      if (!credit.ok) throw new InvoiceLimitReachedError()
 
-    if (!user?.invoiceCountResetAt || user.invoiceCountResetAt < startOfCurrentMonth) {
-      await db
-        .update(users)
-        .set({ invoiceCountThisMonth: 0, invoiceCountResetAt: startOfCurrentMonth })
-        .where(eq(users.id, userId))
-      currentCount = 0
-    }
+      return tx
+        .update(invoices)
+        .set({ type: 'invoice', status: 'draft', invoiceNumber, updatedAt: new Date() })
+        .where(eq(invoices.id, id))
+        .returning()
+    })
 
-    if (currentCount >= FREE_INVOICE_LIMIT) {
+    res.json(numericInvoice(updated))
+  } catch (err) {
+    if (err instanceof InvoiceLimitReachedError) {
       res.status(403).json({
         error: 'Free plan limited to 10 invoices per month. Upgrade to Premium for unlimited invoicing.',
         code: 'INVOICE_LIMIT_REACHED',
       })
       return
     }
+    throw err
   }
-
-  const invoiceNumber = await generateInvoiceNumber(userId, 'invoice')
-
-  const [updated] = await db.transaction(async (tx) => {
-    const result = await tx
-      .update(invoices)
-      .set({ type: 'invoice', status: 'draft', invoiceNumber, updatedAt: new Date() })
-      .where(eq(invoices.id, id))
-      .returning()
-
-    if (req.user!.plan === 'free') {
-      await tx
-        .update(users)
-        .set({ invoiceCountThisMonth: sql`invoice_count_this_month + 1` })
-        .where(eq(users.id, userId))
-    }
-
-    return result
-  })
-
-  res.json(numericInvoice(updated))
 })
 
 // ─── POST /api/invoices/:id/mark-paid ────────────────────────────────────────

@@ -53,7 +53,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setAccessToken(null)
     localStorage.removeItem('refreshToken')
-    localStorage.removeItem('userId')
     navigate('/login', { replace: true })
   }, [navigate])
 
@@ -68,7 +67,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('refreshToken', refreshToken)
       if (userData) {
         setUser(userData)
-        localStorage.setItem('userId', userData.id)
       }
     },
     [],
@@ -93,10 +91,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const storedUserId = localStorage.getItem('userId')
         const { data: refreshData } = await axios.post(
           `${BASE_URL}/api/auth/refresh`,
-          { refreshToken: stored, ...(storedUserId ? { userId: storedUserId } : {}) },
+          { refreshToken: stored },
         )
 
         const newToken: string = refreshData.accessToken
@@ -111,7 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: { Authorization: `Bearer ${newToken}` },
         })
 
-        localStorage.setItem('userId', me.id)
         setUser({
           id: me.id,
           email: me.email,

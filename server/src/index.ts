@@ -37,6 +37,12 @@ function validateEnv(): void {
     process.exit(1)
   }
 
+  // If payments are wired up, the webhook secret must also be set
+  if (isProd && process.env.YOCO_SECRET_KEY && !process.env.YOCO_WEBHOOK_SECRET) {
+    console.error('❌ MISSING_ENV: YOCO_WEBHOOK_SECRET (required when YOCO_SECRET_KEY is set)')
+    missing++
+  }
+
   const secret = process.env.JWT_SECRET
   if (isProd && secret !== undefined) {
     if (secret.length < 32) {

@@ -8,6 +8,20 @@
       "when": 1775542448080,
       "tag": "0000_safe_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777385414766,
+      "tag": "0001_superb_epoch",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777385751857,
+      "tag": "0002_lying_captain_stacy",
+      "breakpoints": true
     }
   ]
 }
