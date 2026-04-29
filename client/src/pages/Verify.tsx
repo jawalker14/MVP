@@ -30,8 +30,10 @@ export default function Verify() {
         login(data.accessToken, data.refreshToken, user)
 
         if (data.isNewUser) {
+          import('./Onboarding')
           navigate('/onboarding', { replace: true })
         } else {
+          import('./Dashboard')
           navigate('/dashboard', { replace: true })
         }
       })

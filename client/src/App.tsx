@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -5,30 +6,35 @@ import { ToastProvider } from './contexts/ToastContext'
 import ProtectedLayout from './components/ProtectedLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 
-// Auth / onboarding pages
-import Login from './pages/Login'
-import Verify from './pages/Verify'
-import Onboarding from './pages/Onboarding'
+// Route-level code splitting — each page loads only when navigated to
+const Login = lazy(() => import('./pages/Login'))
+const Verify = lazy(() => import('./pages/Verify'))
+const Onboarding = lazy(() => import('./pages/Onboarding'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Clients = lazy(() => import('./pages/Clients'))
+const ClientNew = lazy(() => import('./pages/ClientNew'))
+const ClientEdit = lazy(() => import('./pages/ClientEdit'))
+const Invoices = lazy(() => import('./pages/Invoices'))
+const InvoiceNew = lazy(() => import('./pages/InvoiceNew'))
+const InvoiceDetail = lazy(() => import('./pages/InvoiceDetail'))
+const InvoiceEdit = lazy(() => import('./pages/InvoiceEdit'))
+const InvoicePublic = lazy(() => import('./pages/InvoicePublic'))
+const Settings = lazy(() => import('./pages/Settings'))
 
-// Protected app pages
-import Dashboard from './pages/Dashboard'
-import Clients from './pages/Clients'
-import ClientNew from './pages/ClientNew'
-import ClientEdit from './pages/ClientEdit'
-import Invoices from './pages/Invoices'
-import InvoiceNew from './pages/InvoiceNew'
-import InvoiceDetail from './pages/InvoiceDetail'
-import InvoiceEdit from './pages/InvoiceEdit'
-import Settings from './pages/Settings'
-
-// Public pages (no auth)
-import InvoicePublic from './pages/InvoicePublic'
+function FullscreenSpinner() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-primary">
+      <Loader2 className="w-8 h-8 text-accent animate-spin" />
+    </div>
+  )
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
+          <Suspense fallback={<FullscreenSpinner />}>
           <Routes>
             {/* Root — redirect handled by RootIndex */}
             <Route path="/" element={<RootIndex />} />
@@ -63,6 +69,7 @@ export default function App() {
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Routes>
+          </Suspense>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

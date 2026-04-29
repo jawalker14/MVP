@@ -104,17 +104,18 @@ export default function Clients() {
         ) : (
           <div>
             {clients.map((client) => (
-              <div
+              <button
                 key={client.id}
+                type="button"
                 onClick={() => navigate(`/clients/${client.id}/edit`)}
-                className="bg-surface rounded-xl p-4 mb-2 flex items-center justify-between active:opacity-70 cursor-pointer"
+                className="w-full text-left bg-surface rounded-xl p-4 mb-2 flex items-center justify-between active:opacity-70"
               >
                 <div className="min-w-0 mr-3">
                   <p className="text-text-primary font-semibold truncate">{client.name}</p>
                   <p className="text-sm text-text-muted">{client.phoneWhatsapp}</p>
                 </div>
                 <ChevronRight className="w-5 h-5 text-text-muted shrink-0" />
-              </div>
+              </button>
             ))}
           </div>
         )}

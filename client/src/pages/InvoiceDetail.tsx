@@ -8,6 +8,9 @@ import {
   CheckCircle,
   Loader2,
   ChevronLeft,
+  Link,
+  Copy,
+  X,
 } from 'lucide-react'
 import api from '../api/client'
 import { useToast } from '../contexts/ToastContext'
@@ -48,6 +51,7 @@ export default function InvoiceDetail() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [refreshedUrl, setRefreshedUrl] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -176,8 +180,41 @@ export default function InvoiceDetail() {
     }
   }
 
+  async function handleRevokePublicLink() {
+    if (!id || actionLoading) return
+    setActionLoading(true)
+    setMenuOpen(false)
+    try {
+      await api.post(`/api/invoices/${id}/revoke-public-link`)
+      showToast('Public link revoked', 'success')
+      await fetchInvoice()
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } }
+      showToast(e?.response?.data?.error ?? 'Failed to revoke link', 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleRefreshPublicLink() {
+    if (!id || actionLoading) return
+    setActionLoading(true)
+    setMenuOpen(false)
+    try {
+      const { data } = await api.post<{ publicUrl: string }>(`/api/invoices/${id}/refresh-public-link`)
+      setRefreshedUrl(data.publicUrl)
+      await fetchInvoice()
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } }
+      showToast(e?.response?.data?.error ?? 'Failed to regenerate link', 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   function handleDownloadPdf() {
-    window.open(`${API_URL}/api/invoices/${id}/public/pdf`, '_blank')
+    const token = invoice?.publicToken ?? ''
+    window.open(`${API_URL}/api/invoices/${id}/public/pdf?t=${token}`, '_blank')
   }
 
   // ── Loading / error states ──
@@ -224,9 +261,15 @@ export default function InvoiceDetail() {
       { label: 'Resend via WhatsApp', onClick: () => handleSend('whatsapp') },
       { label: 'Mark as Paid', onClick: handleMarkPaid },
       { label: 'Download PDF', onClick: handleDownloadPdf },
+      { label: 'Regenerate share link', onClick: handleRefreshPublicLink },
+      { label: 'Revoke public link', onClick: handleRevokePublicLink, danger: true },
     )
   } else if (status === 'paid') {
-    menuItems.push({ label: 'Download PDF', onClick: handleDownloadPdf })
+    menuItems.push(
+      { label: 'Download PDF', onClick: handleDownloadPdf },
+      { label: 'Regenerate share link', onClick: handleRefreshPublicLink },
+      { label: 'Revoke public link', onClick: handleRevokePublicLink, danger: true },
+    )
   }
 
   if (isQuote && !invoice.convertedToInvoiceId) {
@@ -447,6 +490,58 @@ export default function InvoiceDetail() {
           ))}
         </div>
       </div>
+
+      {/* ── Public share link ── */}
+      {invoice.publicToken && (
+        <div className="mx-4 mb-4 rounded-xl bg-surface p-4">
+          <p className="text-xs uppercase tracking-wider text-text-muted mb-2">Share link</p>
+          <div className="flex items-center gap-2">
+            <Link className="w-4 h-4 text-text-muted shrink-0" />
+            <p className="text-sm text-text-secondary truncate flex-1">
+              {`${window.location.origin}/invoice/${id}?t=${invoice.publicToken}`}
+            </p>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  `${window.location.origin}/invoice/${id}?t=${invoice.publicToken}`,
+                )
+                showToast('Copied!', 'success')
+              }}
+              className="shrink-0 text-accent active:opacity-70"
+              aria-label="Copy link"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Regenerated URL overlay ── */}
+      {refreshedUrl && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => setRefreshedUrl(null)} />
+          <div className="relative z-10 w-full max-w-md bg-surface-raised rounded-2xl p-5 shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-semibold text-text-primary">New share link</p>
+              <button onClick={() => setRefreshedUrl(null)} className="text-text-muted active:opacity-70">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-text-secondary break-all mb-4">{refreshedUrl}</p>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(refreshedUrl)
+                showToast('Copied!', 'success')
+                setRefreshedUrl(null)
+              }}
+              className="w-full h-11 bg-accent text-white font-bold rounded-xl flex items-center justify-center gap-2 active:opacity-90"
+            >
+              <Copy className="w-4 h-4" />
+              Copy link
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Fixed bottom actions ── */}
       <div

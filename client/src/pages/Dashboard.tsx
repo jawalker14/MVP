@@ -100,10 +100,11 @@ export default function Dashboard() {
         ) : (
           <div>
             {invoices.map((inv) => (
-              <div
+              <button
                 key={inv.id}
+                type="button"
                 onClick={() => navigate(`/invoices/${inv.id}`)}
-                className="bg-surface rounded-xl p-4 mb-2 flex items-center justify-between active:opacity-70 cursor-pointer"
+                className="w-full text-left bg-surface rounded-xl p-4 mb-2 flex items-center justify-between active:opacity-70"
               >
                 <div className="min-w-0 mr-3">
                   <p className="text-text-primary font-semibold truncate">
@@ -117,7 +118,7 @@ export default function Dashboard() {
                     <StatusBadge status={inv.status} />
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}

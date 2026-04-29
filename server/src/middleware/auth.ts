@@ -4,7 +4,6 @@ import jwt from 'jsonwebtoken'
 export interface JwtPayload {
   sub: string
   email: string
-  plan: string
 }
 
 export interface AuthRequest extends Request {
@@ -24,7 +23,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
 
   try {
     const payload = jwt.verify(token, secret, { algorithms: ['HS256'], issuer: 'invoicekasi', audience: 'invoicekasi-app' }) as JwtPayload
-    req.user = { sub: payload.sub, email: payload.email, plan: payload.plan }
+    req.user = { sub: payload.sub, email: payload.email }
     req.userId = payload.sub // backward compat
     next()
   } catch {

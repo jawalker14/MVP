@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { db } from '../db'
-import { clients } from '../db/schema'
+import { clients, users } from '../db/schema'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 import { validateBody } from '../middleware/validate'
 import { eq, and, ilike, or, count, asc } from 'drizzle-orm'
@@ -87,8 +87,10 @@ router.post('/', validateBody(CreateClientSchema), async (req: AuthRequest, res)
   const userId = req.userId!
   const body = req.body as z.infer<typeof CreateClientSchema>
 
-  // Free tier check: max 5 active clients
-  if (req.user!.plan === 'free') {
+  // Free tier check: max 5 active clients — read plan fresh from DB, not JWT
+  const [u] = await db.select({ plan: users.plan }).from(users).where(eq(users.id, userId)).limit(1)
+  const plan = u?.plan ?? 'free'
+  if (plan === 'free') {
     const [{ count: clientCount }] = await db
       .select({ count: count() })
       .from(clients)

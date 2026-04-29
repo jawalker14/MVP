@@ -75,7 +75,8 @@ const XQ = XD + CD
 const XP = XQ + CQ
 const XT = XP + CP
 
-const ROW_H = 22  // table row height
+const ROW_H = 22       // minimum table row height
+const PAGE_BOTTOM = PH - M - 80  // reserved for footer
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -117,11 +118,21 @@ export async function generateInvoicePDF(data: PdfInvoiceData): Promise<Buffer> 
   return new Promise<Buffer>((resolve, reject) => {
     const { invoice, lineItems, client, business } = data
 
-    const doc = new PDFDocument({ size: 'A4', margin: M, autoFirstPage: true })
+    const doc = new PDFDocument({ size: 'A4', margin: M, autoFirstPage: true, bufferPages: true })
     const chunks: Buffer[] = []
     doc.on('data', (c: Buffer) => chunks.push(c))
     doc.on('end', () => resolve(Buffer.concat(chunks)))
     doc.on('error', reject)
+
+    // Helper: draw table column headers at given y
+    function drawTableHeader(headerY: number): void {
+      doc.rect(M, headerY, CW, ROW_H).fill(C.headerBg)
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(C.primary)
+      doc.text('Description', XD + 4, headerY + 7, { width: CD - 8,  lineBreak: false })
+      doc.text('Qty',         XQ,     headerY + 7, { width: CQ,      align: 'right', lineBreak: false })
+      doc.text('Unit Price',  XP,     headerY + 7, { width: CP,      align: 'right', lineBreak: false })
+      doc.text('Total',       XT,     headerY + 7, { width: CT,      align: 'right', lineBreak: false })
+    }
 
     // ── PAID WATERMARK (drawn first, behind all content) ──────────────────────
     if (invoice.status === 'paid') {
@@ -146,10 +157,12 @@ export async function generateInvoicePDF(data: PdfInvoiceData): Promise<Buffer> 
     let leftY  = M
     let rightY = M
 
-    // Left: business name + address + VAT
+    // Left: business name (wrapping) + address + VAT
     doc.font('Helvetica-Bold').fontSize(20).fillColor(C.primary)
-    doc.text(business?.businessName || 'Your Business', M, leftY, { width: 270, lineBreak: false })
-    leftY += 26
+    const bizName = business?.businessName || 'Your Business'
+    const bizNameH = doc.heightOfString(bizName, { width: 270 })
+    doc.text(bizName, M, leftY, { width: 270 })
+    leftY += bizNameH + 6
 
     doc.font('Helvetica').fontSize(10).fillColor(C.secondary)
     if (business?.addressLine1) {
@@ -220,8 +233,9 @@ export async function generateInvoicePDF(data: PdfInvoiceData): Promise<Buffer> 
 
     if (client) {
       doc.font('Helvetica-Bold').fontSize(14).fillColor(C.primary)
-      doc.text(client.name, M, y, { width: 280, lineBreak: false })
-      y += 20
+      const clientNameH = doc.heightOfString(client.name, { width: 280 })
+      doc.text(client.name, M, y, { width: 280 })
+      y += clientNameH + 6
 
       doc.font('Helvetica').fontSize(10).fillColor(C.secondary)
       if (client.email) {
@@ -235,37 +249,47 @@ export async function generateInvoicePDF(data: PdfInvoiceData): Promise<Buffer> 
     y += 16
 
     // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
-
-    // Header row background + text
-    doc.rect(M, y, CW, ROW_H).fill(C.headerBg)
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(C.primary)
-    doc.text('Description', XD + 4, y + 7, { width: CD - 8,  lineBreak: false })
-    doc.text('Qty',         XQ,     y + 7, { width: CQ,      align: 'right', lineBreak: false })
-    doc.text('Unit Price',  XP,     y + 7, { width: CP,      align: 'right', lineBreak: false })
-    doc.text('Total',       XT,     y + 7, { width: CT,      align: 'right', lineBreak: false })
+    drawTableHeader(y)
     y += ROW_H
 
-    // Data rows
+    // Data rows — variable height based on wrapped description
     lineItems.forEach((item, i) => {
-      if (i % 2 === 1) {
-        doc.rect(M, y, CW, ROW_H).fill(C.altRowBg)
-      }
-      hLine(doc, y + ROW_H)
+      doc.font('Helvetica').fontSize(9).fillColor(C.primary)
+      const descHeight = doc.heightOfString(item.description, { width: CD - 8 })
+      const rowHeight = Math.max(ROW_H, descHeight + 14)
 
-      let desc = item.description
-      if (desc.length > 62) desc = desc.slice(0, 59) + '…'
+      if (y + rowHeight > PAGE_BOTTOM) {
+        doc.addPage()
+        y = M
+        drawTableHeader(y)
+        y += ROW_H
+      }
+
+      if (i % 2 === 1) {
+        doc.rect(M, y, CW, rowHeight).fill(C.altRowBg)
+      }
+      hLine(doc, y + rowHeight)
 
       doc.font('Helvetica').fontSize(9).fillColor(C.primary)
-      doc.text(desc,                       XD + 4, y + 7, { width: CD - 8, lineBreak: false })
+      doc.text(item.description,           XD + 4, y + 7, { width: CD - 8 })
       doc.text(fmtQty(item.quantity),      XQ,     y + 7, { width: CQ,     align: 'right', lineBreak: false })
       doc.text(formatZAR(item.unitPrice),  XP,     y + 7, { width: CP,     align: 'right', lineBreak: false })
       doc.text(formatZAR(item.lineTotal),  XT,     y + 7, { width: CT,     align: 'right', lineBreak: false })
-      y += ROW_H
+      y += rowHeight
     })
 
     y += 22
 
     // ── TOTALS ────────────────────────────────────────────────────────────────
+    let totalsH = 16 + 8 + 24 + 20  // subtotal + separator gap + total + bottom spacing
+    if (invoice.vatRate > 0) totalsH += 16
+    if (invoice.paymentLinkUrl) totalsH += 14
+
+    if (y + totalsH > PAGE_BOTTOM) {
+      doc.addPage()
+      y = M
+    }
+
     const tlX = 340           // totals label x
     const tlW = 100           // totals label width
     const tvX = tlX + tlW    // totals value x (440)
@@ -306,12 +330,20 @@ export async function generateInvoicePDF(data: PdfInvoiceData): Promise<Buffer> 
 
     // ── NOTES ─────────────────────────────────────────────────────────────────
     if (invoice.notes) {
+      doc.font('Helvetica').fontSize(10).fillColor(C.secondary)
+      const notesH = doc.heightOfString(invoice.notes, { width: CW })
+      const notesSectionH = 14 + notesH + 20
+
+      if (y + notesSectionH > PAGE_BOTTOM) {
+        doc.addPage()
+        y = M
+      }
+
       doc.font('Helvetica-Bold').fontSize(10).fillColor(C.primary)
       doc.text('Notes', M, y, { lineBreak: false })
       y += 14
 
       doc.font('Helvetica').fontSize(10).fillColor(C.secondary)
-      const notesH = doc.heightOfString(invoice.notes, { width: CW })
       doc.text(invoice.notes, M, y, { width: CW })
       y += notesH + 20
     }
@@ -320,6 +352,16 @@ export async function generateInvoicePDF(data: PdfInvoiceData): Promise<Buffer> 
     const hasBankDetails =
       business?.bankName || business?.bankAccountNumber || business?.bankBranchCode
     if (hasBankDetails) {
+      let bankH = 14  // heading
+      if (business?.bankName) bankH += 14
+      if (business?.bankAccountNumber) bankH += 14
+      if (business?.bankBranchCode) bankH += 14
+
+      if (y + bankH > PAGE_BOTTOM) {
+        doc.addPage()
+        y = M
+      }
+
       doc.font('Helvetica-Bold').fontSize(10).fillColor(C.primary)
       doc.text('Banking Details', M, y, { lineBreak: false })
       y += 14
@@ -335,19 +377,27 @@ export async function generateInvoicePDF(data: PdfInvoiceData): Promise<Buffer> 
       }
       if (business?.bankBranchCode) {
         doc.text(`Branch Code: ${business.bankBranchCode}`, M, y, { lineBreak: false })
-        // y += 14 — no more sections after this
       }
     }
 
-    // ── FOOTER ────────────────────────────────────────────────────────────────
-    const footerY = PH - M - 22
-    hLine(doc, footerY, M, PW - M, C.gold, 1.5)
-    doc.font('Helvetica').fontSize(8).fillColor(C.footer)
-    doc.text('Created with InvoiceKasi — invoicekasi.co.za', M, footerY + 7, {
-      width: CW,
-      align: 'center',
-      lineBreak: false,
-    })
+    // ── FOOTER — every page: gold line + branding + page numbers ─────────────
+    const range = doc.bufferedPageRange()
+    for (let i = 0; i < range.count; i++) {
+      doc.switchToPage(range.start + i)
+      const footerY = PH - M - 22
+      hLine(doc, footerY, M, PW - M, C.gold, 1.5)
+      doc.font('Helvetica').fontSize(8).fillColor(C.footer)
+      doc.text('Created with InvoiceKasi — invoicekasi.co.za', M, footerY + 7, {
+        width: CW,
+        align: 'center',
+        lineBreak: false,
+      })
+      doc.text(`Page ${i + 1} of ${range.count}`, M, footerY + 7, {
+        width: CW,
+        align: 'right',
+        lineBreak: false,
+      })
+    }
 
     doc.end()
   })

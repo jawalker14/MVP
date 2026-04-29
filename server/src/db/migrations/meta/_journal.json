@@ -29,6 +29,27 @@
       "when": 1777444187260,
       "tag": "0003_deep_demogoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777463201776,
+      "tag": "0004_quiet_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777463367864,
+      "tag": "0005_outstanding_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777463400000,
+      "tag": "0006_backfill_public_tokens",
+      "breakpoints": true
     }
   ]
 }

@@ -1,8 +1,8 @@
-import { Router } from 'express'
+import { Router, Response, NextFunction } from 'express'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import multer from 'multer'
+import multer, { MulterError } from 'multer'
 import { Resend } from 'resend'
 import { db } from '../db'
 import { users, magicLinks, refreshTokens } from '../db/schema'
@@ -73,8 +73,8 @@ function sha256(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex')
 }
 
-function signAccessToken(userId: string, email: string, plan: string): string {
-  return jwt.sign({ sub: userId, email, plan }, process.env.JWT_SECRET!, {
+function signAccessToken(userId: string, email: string): string {
+  return jwt.sign({ sub: userId, email }, process.env.JWT_SECRET!, {
     algorithm: 'HS256',
     expiresIn: ACCESS_TOKEN_TTL,
     issuer: 'invoicekasi',
@@ -210,7 +210,7 @@ router.post(
       isNewUser = true
     }
 
-    const accessToken = signAccessToken(user.id, user.email, user.plan ?? 'free')
+    const accessToken = signAccessToken(user.id, user.email)
     const refreshToken = await issueRefreshToken(user.id)
 
     const authPayload: AuthResponse = {
@@ -287,7 +287,7 @@ router.post('/refresh', validateBody(RefreshSchema), async (req, res) => {
     return
   }
 
-  const accessToken = signAccessToken(user.id, user.email, user.plan ?? 'free')
+  const accessToken = signAccessToken(user.id, user.email)
   const newRefreshToken = await issueRefreshToken(user.id)
 
   res.json({ accessToken, refreshToken: newRefreshToken })
@@ -400,10 +400,29 @@ const logoUpload = multer({
   },
 })
 
+function logoUploadMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  logoUpload.single('logo')(req as any, res, (err: any) => {
+    if (err) {
+      if (err instanceof MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ error: 'File too large (max 2MB)', code: 'FILE_TOO_LARGE' })
+          return
+        }
+        res.status(400).json({ error: err.message, code: err.code })
+        return
+      }
+      // fileFilter rejection or other
+      res.status(400).json({ error: err.message ?? 'Upload failed', code: 'UPLOAD_FAILED' })
+      return
+    }
+    next()
+  })
+}
+
 router.post(
   '/logo',
   requireAuth,
-  (req: AuthRequest, res, next) => logoUpload.single('logo')(req as any, res, next),
+  logoUploadMiddleware,
   async (req: AuthRequest, res) => {
     if (!req.file) {
       res.status(400).json({ error: 'No file uploaded' })

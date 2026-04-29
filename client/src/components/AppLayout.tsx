@@ -103,7 +103,7 @@ function NavItem({
       }`}
     >
       <Icon className="w-5 h-5" />
-      <span className="text-[10px] font-medium">{label}</span>
+      <span className="text-[11px] font-medium">{label}</span>
     </Link>
   )
 }

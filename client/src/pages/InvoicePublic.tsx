@@ -20,6 +20,7 @@ function formatDate(iso: string | null | undefined): string {
 export default function InvoicePublic() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
+  const token = searchParams.get('t') ?? ''
   const paymentStatus = searchParams.get('payment') as 'success' | 'cancelled' | 'failed' | null
 
   const [invoice, setInvoice] = useState<InvoiceResponse | null>(null)
@@ -28,7 +29,12 @@ export default function InvoicePublic() {
 
   useEffect(() => {
     if (!id) return
-    fetch(`${API_URL}/api/invoices/${id}/public`)
+    if (!token) {
+      setError('Invoice not found')
+      setLoading(false)
+      return
+    }
+    fetch(`${API_URL}/api/invoices/${id}/public?t=${token}`)
       .then((r) => {
         if (!r.ok) throw new Error('Not found')
         return r.json() as Promise<InvoiceResponse>
@@ -36,7 +42,7 @@ export default function InvoicePublic() {
       .then(setInvoice)
       .catch(() => setError('Invoice not found'))
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, token])
 
   if (loading) {
     return (
@@ -306,7 +312,7 @@ export default function InvoicePublic() {
       {/* ── PDF download ── */}
       <div className="flex justify-center mt-5">
         <a
-          href={`${API_URL}/api/invoices/${id}/public/pdf`}
+          href={`${API_URL}/api/invoices/${id}/public/pdf?t=${token}`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-sm text-gray-500 underline underline-offset-2"

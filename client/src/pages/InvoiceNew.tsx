@@ -30,8 +30,8 @@ const LABEL = 'block text-sm font-medium text-text-secondary mb-1'
 interface LineItem {
   id: string
   description: string
-  quantity: number
-  unit_price: number
+  quantity: string  // raw input — parse via parseFloat where math is needed
+  unit_price: string  // raw input — parse via parseFloat where math is needed
 }
 
 interface WizardState {
@@ -87,18 +87,26 @@ function get14DaysFromNow(): string {
 }
 
 function computeTotals(lineItems: LineItem[], vatEnabled: boolean) {
-  const subtotal = lineItems.reduce(
-    (sum, item) => sum + parseFloat((item.quantity * item.unit_price).toFixed(2)),
-    0,
-  )
-  const vat = vatEnabled ? parseFloat((subtotal * 0.15).toFixed(2)) : 0
-  const total = parseFloat((subtotal + vat).toFixed(2))
-  return { subtotal, vat, total }
+  const lineCents = lineItems.map((item) => {
+    const q = parseFloat(item.quantity) || 0
+    const p = parseFloat(item.unit_price) || 0
+    const qtyHundredths = Math.round(q * 100)
+    const priceCents = Math.round(p * 100)
+    return Math.round((qtyHundredths * priceCents) / 100)
+  })
+  const subtotalCents = lineCents.reduce((s, c) => s + c, 0)
+  const vatCents = vatEnabled ? Math.round((subtotalCents * 15) / 100) : 0
+  const totalCents = subtotalCents + vatCents
+  return {
+    subtotal: Math.round(subtotalCents) / 100,
+    vat: Math.round(vatCents) / 100,
+    total: Math.round(totalCents) / 100,
+  }
 }
 
 function hasDataEntered(state: WizardState): boolean {
   if (state.client_id) return true
-  return state.line_items.some((item) => item.description.trim() !== '' || item.unit_price > 0)
+  return state.line_items.some((item) => item.description.trim() !== '' || (parseFloat(item.unit_price) || 0) > 0)
 }
 
 // ─── Reducer ─────────────────────────────────────────────────────────────────
@@ -110,7 +118,7 @@ const initialState: WizardState = {
   client_phone: '',
   client_email: '',
   type: 'invoice',
-  line_items: [{ id: crypto.randomUUID(), description: '', quantity: 1, unit_price: 0 }],
+  line_items: [{ id: crypto.randomUUID(), description: '', quantity: '1', unit_price: '' }],
   vat_enabled: false,
   due_date: get14DaysFromNow(),
   notes: '',
@@ -150,7 +158,7 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
         ...state,
         line_items: [
           ...state.line_items,
-          { id: crypto.randomUUID(), description: '', quantity: 1, unit_price: 0 },
+          { id: crypto.randomUUID(), description: '', quantity: '1', unit_price: '' },
         ],
       }
     case 'REMOVE_LINE_ITEM':
@@ -449,7 +457,7 @@ function Step2LineItems({
       {/* Scrollable content */}
       <div className="px-4 pb-[220px]">
         {state.line_items.map((item, idx) => {
-          const lineTotal = item.quantity * item.unit_price
+          const lineTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
           return (
             <div key={item.id} className="bg-surface rounded-xl p-4 mb-3 relative">
               {/* Delete button — only if more than 1 item */}
@@ -480,7 +488,7 @@ function Step2LineItems({
                   <div className="flex items-center gap-0 bg-primary rounded-xl overflow-hidden">
                     <button
                       onClick={() =>
-                        updateField(item.id, 'quantity', Math.max(1, item.quantity - 1))
+                        updateField(item.id, 'quantity', String(Math.max(1, (parseFloat(item.quantity) || 1) - 1)))
                       }
                       className="w-11 h-11 flex items-center justify-center text-text-secondary text-lg font-medium active:bg-surface-raised active:scale-95 transition-transform duration-150"
                     >
@@ -489,14 +497,16 @@ function Step2LineItems({
                     <input
                       value={item.quantity}
                       onChange={(e) => {
-                        const v = parseInt(e.target.value, 10)
-                        if (!isNaN(v) && v > 0) updateField(item.id, 'quantity', v)
+                        const cleaned = e.target.value
+                          .replace(/[^0-9.]/g, '')
+                          .replace(/(\..*)\./g, '$1')
+                        updateField(item.id, 'quantity', cleaned)
                       }}
-                      inputMode="numeric"
+                      inputMode="decimal"
                       className="w-10 h-11 bg-transparent text-center text-base font-semibold text-text-primary outline-none"
                     />
                     <button
-                      onClick={() => updateField(item.id, 'quantity', item.quantity + 1)}
+                      onClick={() => updateField(item.id, 'quantity', String((parseFloat(item.quantity) || 0) + 1))}
                       className="w-11 h-11 flex items-center justify-center text-text-secondary text-lg font-medium active:bg-surface-raised active:scale-95 transition-transform duration-150"
                     >
                       +
@@ -512,11 +522,12 @@ function Step2LineItems({
                       R
                     </span>
                     <input
-                      value={item.unit_price === 0 ? '' : String(item.unit_price)}
+                      value={item.unit_price}
                       onChange={(e) => {
-                        const raw = e.target.value.replace(/[^0-9.]/g, '')
-                        const v = parseFloat(raw)
-                        updateField(item.id, 'unit_price', isNaN(v) ? 0 : v)
+                        const cleaned = e.target.value
+                          .replace(/[^0-9.]/g, '')
+                          .replace(/(\..*)\./g, '$1')
+                        updateField(item.id, 'unit_price', cleaned)
                       }}
                       placeholder="0.00"
                       inputMode="decimal"
@@ -747,11 +758,11 @@ function Step4Review({
                     {item.description || 'Unnamed item'}
                   </p>
                   <p className="text-xs text-text-muted mt-0.5">
-                    {item.quantity} × {formatZAR(item.unit_price)}
+                    {item.quantity} × {formatZAR(parseFloat(item.unit_price) || 0)}
                   </p>
                 </div>
                 <p className="text-text-primary text-sm font-medium shrink-0">
-                  {formatZAR(item.quantity * item.unit_price)}
+                  {formatZAR((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0))}
                 </p>
               </div>
             ))}
@@ -934,6 +945,16 @@ export default function InvoiceNew() {
       dispatch({ type: 'SET_SUBMITTING', value: true })
 
       try {
+        // Validate line items before posting
+        const invalidItem = state.line_items.some(
+          (item) => (parseFloat(item.quantity) || 0) <= 0 || (parseFloat(item.unit_price) || 0) < 0,
+        )
+        if (invalidItem) {
+          showToast('Please enter valid quantities and prices for all items', 'error')
+          dispatch({ type: 'SET_SUBMITTING', value: false })
+          return
+        }
+
         // Build invoice body
         const body = {
           clientId: state.client_id!,
@@ -943,8 +964,8 @@ export default function InvoiceNew() {
           notes: state.notes || null,
           lineItems: state.line_items.map((item, idx) => ({
             description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
+            quantity: parseFloat(item.quantity) || 0,
+            unitPrice: parseFloat(item.unit_price) || 0,
             sortOrder: idx,
           })),
         }

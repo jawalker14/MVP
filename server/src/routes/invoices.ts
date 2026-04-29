@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { Router, Request } from 'express'
 import { db } from '../db'
 import { invoices, lineItems, clients, users } from '../db/schema'
@@ -9,11 +10,13 @@ import {
   desc,
   gte,
   lte,
+  gt,
   count,
   getTableColumns,
 } from 'drizzle-orm'
 import { consumeInvoiceCredit, InvoiceLimitReachedError } from '../utils/freeTierGate'
 import { generateInvoiceNumber } from '../utils/invoiceNumber'
+import { fromCents, calcVatCents, VAT_RATE_PERCENT } from '../utils/money'
 import { formatZAR } from '../utils/formatZAR'
 import { generateInvoicePDF, PdfInvoiceData } from '../services/pdf'
 import { CreateInvoiceSchema, SendInvoiceSchema } from '@invoicekasi/shared'
@@ -32,14 +35,21 @@ function calcTotals(
   items: Array<{ quantity: number; unitPrice: number }>,
   vatEnabled: boolean,
 ) {
-  const lineTotals = items.map((item) =>
-    parseFloat((item.quantity * item.unitPrice).toFixed(2)),
-  )
-  const subtotal = parseFloat(lineTotals.reduce((sum, t) => sum + t, 0).toFixed(2))
-  const vatRate = vatEnabled ? 15 : 0
-  const vatAmount = vatEnabled ? parseFloat((subtotal * 0.15).toFixed(2)) : 0
-  const total = parseFloat((subtotal + vatAmount).toFixed(2))
-  return { subtotal, vatRate, vatAmount, total, lineTotals }
+  const lineCents = items.map((item) => {
+    const qtyHundredths = Math.round(item.quantity * 100)
+    const priceCents = Math.round(item.unitPrice * 100)
+    return Math.round((qtyHundredths * priceCents) / 100)
+  })
+  const subtotalCents = lineCents.reduce((s, c) => s + c, 0)
+  const vatCents = calcVatCents(subtotalCents, vatEnabled)
+  const totalCents = subtotalCents + vatCents
+  return {
+    subtotal: fromCents(subtotalCents),
+    vatRate: vatEnabled ? VAT_RATE_PERCENT : 0,
+    vatAmount: fromCents(vatCents),
+    total: fromCents(totalCents),
+    lineTotals: lineCents.map(fromCents),
+  }
 }
 
 // Drizzle returns numeric columns as strings and timestamps as Date — normalize to wire format.
@@ -74,11 +84,23 @@ function numericLineItem(item: typeof lineItems.$inferSelect) {
 
 router.get('/:id/public', async (req: Request, res) => {
   const id = req.params['id'] as string
+  const t = req.query['t'] as string | undefined
+
+  if (!t) {
+    res.status(404).json({ error: 'Invoice not found' })
+    return
+  }
 
   const [invoice] = await db
     .select()
     .from(invoices)
-    .where(eq(invoices.id, id))
+    .where(
+      and(
+        eq(invoices.id, id),
+        eq(invoices.publicToken, t),
+        gt(invoices.publicTokenExpiresAt, new Date()),
+      ),
+    )
     .limit(1)
 
   if (!invoice) {
@@ -147,8 +169,24 @@ router.get('/:id/public', async (req: Request, res) => {
 
 router.get('/:id/public/pdf', async (req: Request, res) => {
   const id = req.params['id'] as string
+  const t = req.query['t'] as string | undefined
 
-  const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1)
+  if (!t) {
+    res.status(404).json({ error: 'Invoice not found' })
+    return
+  }
+
+  const [invoice] = await db
+    .select()
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.id, id),
+        eq(invoices.publicToken, t),
+        gt(invoices.publicTokenExpiresAt, new Date()),
+      ),
+    )
+    .limit(1)
 
   if (!invoice) {
     res.status(404).json({ error: 'Invoice not found' })
@@ -600,54 +638,80 @@ router.post('/:id/send', validateBody(SendInvoiceSchema), async (req: AuthReques
     return
   }
 
+  // ── Send debounce (5 s) ──────────────────────────────────────────────────────
+  if (invoice.lastSendAttemptAt && Date.now() - invoice.lastSendAttemptAt.getTime() < 5000) {
+    res.status(429).json({ error: 'Send debounced — please wait a few seconds', code: 'SEND_DEBOUNCED' })
+    return
+  }
+
   const now = new Date()
+
+  // Generate a token if the invoice doesn't have one (or its existing one expired).
+  const needsToken =
+    !invoice.publicToken ||
+    (invoice.publicTokenExpiresAt && invoice.publicTokenExpiresAt < now)
+  const tokenUpdate = needsToken
+    ? {
+        publicToken: crypto.randomBytes(20).toString('hex'),
+        publicTokenExpiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      }
+    : {}
+
+  // Stamp lastSendAttemptAt immediately so concurrent requests see the lock.
   const [updated] = await db
     .update(invoices)
-    .set({ status: 'sent', sentAt: now, sentVia: body.via, updatedAt: now })
+    .set({ status: 'sent', sentAt: now, sentVia: body.via, lastSendAttemptAt: now, updatedAt: now, ...tokenUpdate })
     .where(eq(invoices.id, id))
     .returning()
 
   const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173'
-  const publicUrl = `${clientUrl}/invoice/${id}`
+  const activeToken = updated.publicToken ?? invoice.publicToken ?? ''
+  const publicUrl = `${clientUrl}/invoice/${id}?t=${activeToken}`
 
-  // ── Yoco checkout creation ───────────────────────────────────────────────────
+  // ── Yoco checkout creation (idempotent) ──────────────────────────────────────
   const yocoKey = process.env.YOCO_SECRET_KEY
   if (yocoKey && yocoKey.trim() !== '') {
-    try {
-      const total = parseFloat(invoice.total ?? '0')
-      const amountCents = Math.round(total * 100)
+    if (!invoice.paymentLinkUrl || !invoice.paymentReference) {
+      try {
+        const total = parseFloat(invoice.total ?? '0')
+        const amountCents = Math.round(total * 100)
 
-      const yocoRes = await fetch('https://payments.yoco.com/api/checkouts', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${yocoKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount: amountCents,
-          currency: 'ZAR',
-          successUrl: `${clientUrl}/invoice/${id}?payment=success`,
-          cancelUrl: `${clientUrl}/invoice/${id}?payment=cancelled`,
-          failureUrl: `${clientUrl}/invoice/${id}?payment=failed`,
-          metadata: { invoice_id: id, invoice_number: invoice.invoiceNumber },
-        }),
-      })
+        const yocoRes = await fetch('https://payments.yoco.com/api/checkouts', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${yocoKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: amountCents,
+            currency: 'ZAR',
+            successUrl: `${publicUrl}&payment=success`,
+            cancelUrl: `${publicUrl}&payment=cancelled`,
+            failureUrl: `${publicUrl}&payment=failed`,
+            metadata: { invoice_id: id, invoice_number: invoice.invoiceNumber },
+          }),
+        })
 
-      if (yocoRes.ok) {
-        const yocoData = (await yocoRes.json()) as { id: string; redirectUrl: string }
-        await db
-          .update(invoices)
-          .set({ paymentReference: yocoData.id, paymentLinkUrl: yocoData.redirectUrl })
-          .where(eq(invoices.id, id))
-        updated.paymentReference = yocoData.id
-        updated.paymentLinkUrl = yocoData.redirectUrl
-      } else {
-        const errText = await yocoRes.text()
-        console.error(`Yoco checkout creation failed (${yocoRes.status}): ${errText}`)
+        if (yocoRes.ok) {
+          const yocoData = (await yocoRes.json()) as { id: string; redirectUrl: string }
+          await db
+            .update(invoices)
+            .set({ paymentReference: yocoData.id, paymentLinkUrl: yocoData.redirectUrl })
+            .where(eq(invoices.id, id))
+          updated.paymentReference = yocoData.id
+          updated.paymentLinkUrl = yocoData.redirectUrl
+        } else {
+          const errText = await yocoRes.text()
+          console.error({ msg: 'Yoco checkout creation failed', invoiceId: id, status: yocoRes.status, body: errText })
+        }
+      } catch (err) {
+        console.error({ msg: 'Yoco checkout creation error', invoiceId: id, err })
+        // Non-fatal — continue without payment link
       }
-    } catch (err) {
-      console.error('Yoco checkout creation error:', err)
-      // Non-fatal — continue without payment link
+    } else {
+      // Reuse existing checkout — no Yoco call needed.
+      updated.paymentLinkUrl = invoice.paymentLinkUrl
+      updated.paymentReference = invoice.paymentReference
     }
   } else {
     console.log('Yoco not configured — skipping payment link creation')
@@ -695,6 +759,60 @@ router.post('/:id/send', validateBody(SendInvoiceSchema), async (req: AuthReques
     public_url: publicUrl,
   }
   res.json(payload)
+})
+
+// ─── POST /api/invoices/:id/revoke-public-link ───────────────────────────────
+
+router.post('/:id/revoke-public-link', async (req: AuthRequest, res) => {
+  const id = req.params['id'] as string
+  const userId = req.userId!
+
+  const [existing] = await db
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(and(eq(invoices.id, id), eq(invoices.userId, userId)))
+    .limit(1)
+
+  if (!existing) {
+    res.status(404).json({ error: 'Invoice not found' })
+    return
+  }
+
+  await db
+    .update(invoices)
+    .set({ publicToken: null, publicTokenExpiresAt: null, updatedAt: new Date() })
+    .where(eq(invoices.id, id))
+
+  res.json({ revoked: true })
+})
+
+// ─── POST /api/invoices/:id/refresh-public-link ──────────────────────────────
+
+router.post('/:id/refresh-public-link', async (req: AuthRequest, res) => {
+  const id = req.params['id'] as string
+  const userId = req.userId!
+
+  const [existing] = await db
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(and(eq(invoices.id, id), eq(invoices.userId, userId)))
+    .limit(1)
+
+  if (!existing) {
+    res.status(404).json({ error: 'Invoice not found' })
+    return
+  }
+
+  const token = crypto.randomBytes(20).toString('hex')
+  const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+
+  await db
+    .update(invoices)
+    .set({ publicToken: token, publicTokenExpiresAt: expiresAt, updatedAt: new Date() })
+    .where(eq(invoices.id, id))
+
+  const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173'
+  res.json({ token, publicUrl: `${clientUrl}/invoice/${id}?t=${token}` })
 })
 
 // ─── POST /api/invoices/:id/convert ──────────────────────────────────────────

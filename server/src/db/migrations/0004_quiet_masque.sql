@@ -1,0 +1,1 @@
+ALTER TABLE "invoices" ADD COLUMN "last_send_attempt_at" timestamp with time zone;

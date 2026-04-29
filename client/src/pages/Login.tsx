@@ -34,6 +34,9 @@ export default function Login() {
         setDevLink(res.data.dev_link)
       }
       setSent(true)
+      // Prefetch the most likely next chunk while the user checks their email
+      import('./Dashboard')
+      import('./Onboarding')
     } catch (err: unknown) {
       const msg =
         err && typeof err === 'object' && 'response' in err

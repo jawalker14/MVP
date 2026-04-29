@@ -132,6 +132,7 @@ export const InvoiceResponseSchema = z.object({
   currency: z.string().nullable(),
   dueDate: z.string().nullable(),
   notes: z.string().nullable(),
+  publicToken: z.string().nullable().optional(),
   paymentLinkUrl: z.string().nullable(),
   paymentReference: z.string().nullable(),
   sentVia: z.string().nullable(),

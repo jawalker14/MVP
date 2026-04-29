@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "ts-node --transpile-only src/db/migrate.ts",
     "db:migrate:prod": "node dist/db/migrate.js",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "job:overdue": "node dist/jobs/overdue.js"
   },
   "dependencies": {
     "@invoicekasi/shared": "*",
