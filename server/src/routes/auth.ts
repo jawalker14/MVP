@@ -16,8 +16,35 @@ import {
   VerifyMagicLinkSchema,
   RefreshTokenSchema,
 } from '@invoicekasi/shared'
+import type { UserResponse, AuthResponse } from '@invoicekasi/shared'
 
 const router = Router()
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function serializeUser(u: typeof users.$inferSelect): UserResponse {
+  return {
+    id: u.id,
+    email: u.email,
+    businessName: u.businessName || null,
+    phone: u.phone || null,
+    vatNumber: u.vatNumber ?? null,
+    logoUrl: u.logoUrl ?? null,
+    addressLine1: u.addressLine1 ?? null,
+    addressLine2: u.addressLine2 ?? null,
+    city: u.city ?? null,
+    province: u.province ?? null,
+    postalCode: u.postalCode ?? null,
+    bankName: u.bankName ?? null,
+    bankAccountNumber: u.bankAccountNumber ?? null,
+    bankBranchCode: u.bankBranchCode ?? null,
+    languagePref: u.languagePref ?? null,
+    plan: u.plan ?? null,
+    invoiceCountThisMonth: u.invoiceCountThisMonth ?? null,
+    createdAt: u.createdAt?.toISOString() ?? null,
+    updatedAt: u.updatedAt?.toISOString() ?? null,
+  }
+}
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -186,22 +213,13 @@ router.post(
     const accessToken = signAccessToken(user.id, user.email, user.plan ?? 'free')
     const refreshToken = await issueRefreshToken(user.id)
 
-    res.json({
+    const authPayload: AuthResponse = {
       accessToken,
       refreshToken,
       isNewUser,
-      ...(isNewUser
-        ? {}
-        : {
-            user: {
-              id: user.id,
-              email: user.email,
-              businessName: user.businessName,
-              phone: user.phone,
-              plan: user.plan,
-            },
-          }),
-    })
+      user: isNewUser ? undefined : serializeUser(user),
+    }
+    res.json(authPayload)
   },
 )
 
@@ -443,27 +461,8 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
     return
   }
 
-  res.json({
-    id: user.id,
-    email: user.email,
-    businessName: user.businessName,
-    phone: user.phone,
-    vatNumber: user.vatNumber,
-    logoUrl: user.logoUrl,
-    addressLine1: user.addressLine1,
-    addressLine2: user.addressLine2,
-    city: user.city,
-    province: user.province,
-    postalCode: user.postalCode,
-    bankName: user.bankName,
-    bankAccountNumber: user.bankAccountNumber,
-    bankBranchCode: user.bankBranchCode,
-    languagePref: user.languagePref,
-    plan: user.plan,
-    invoiceCountThisMonth: user.invoiceCountThisMonth,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  })
+  const mePayload: UserResponse = serializeUser(user)
+  res.json(mePayload)
 })
 
 export default router

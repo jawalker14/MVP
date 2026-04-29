@@ -3,6 +3,7 @@ import { db } from '../db'
 import { invoices, clients } from '../db/schema'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 import { eq, and, inArray, isNotNull, sql, count } from 'drizzle-orm'
+import type { DashboardStats } from '@invoicekasi/shared'
 
 const router = Router()
 router.use(requireAuth)
@@ -47,12 +48,13 @@ router.get('/summary', async (req: AuthRequest, res) => {
 
   const s = summaryRows[0]
 
-  res.json({
+  const payload: DashboardStats = {
     total_outstanding: parseFloat(s?.totalOutstanding ?? '0'),
     paid_this_month: parseFloat(s?.paidThisMonth ?? '0'),
     overdue_count: parseInt(s?.overdueCount ?? '0', 10),
     total_clients: Number(clientCountRows[0]?.count ?? 0),
-  })
+  }
+  res.json(payload)
 })
 
 export default router

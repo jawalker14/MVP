@@ -32,15 +32,19 @@ function validateEnv(): void {
     }
   }
 
+  // If payments are wired up, the webhook secret must also be set
+  if (process.env.YOCO_SECRET_KEY && !process.env.YOCO_WEBHOOK_SECRET) {
+    if (isProd) {
+      console.error('❌ MISSING_ENV: YOCO_WEBHOOK_SECRET (required when YOCO_SECRET_KEY is set)')
+      missing++
+    } else {
+      console.warn('⚠️  Missing env: YOCO_WEBHOOK_SECRET')
+    }
+  }
+
   if (isProd && missing > 0) {
     console.error(`Server refused to start: ${missing} required env var(s) missing`)
     process.exit(1)
-  }
-
-  // If payments are wired up, the webhook secret must also be set
-  if (isProd && process.env.YOCO_SECRET_KEY && !process.env.YOCO_WEBHOOK_SECRET) {
-    console.error('❌ MISSING_ENV: YOCO_WEBHOOK_SECRET (required when YOCO_SECRET_KEY is set)')
-    missing++
   }
 
   const secret = process.env.JWT_SECRET
@@ -60,6 +64,16 @@ function validateEnv(): void {
 
 validateEnv()
 
+// ─── R2 public origin (for CSP) ───────────────────────────────────────────────
+
+const r2Origin = (() => {
+  try {
+    return process.env.R2_PUBLIC_BASE_URL ? new URL(process.env.R2_PUBLIC_BASE_URL).origin : null
+  } catch {
+    return null
+  }
+})()
+
 // ─── CORS allow-list (computed once at module scope) ─────────────────────────
 
 const corsStaticOrigins = new Set(
@@ -75,25 +89,6 @@ const vercelPrefixPattern: RegExp | null = (() => {
     `^https://${esc}(-[a-z0-9-]+)?-[a-z0-9-]+\\.vercel\\.app$|^https://${esc}\\.vercel\\.app$`,
   )
 })()
-
-// Smoke-test — eyeball these logs then remove this block
-{
-  const prefix = process.env.VERCEL_PROJECT_PREFIX ?? 'my-project'
-  const cases: [string | undefined, string][] = [
-    [undefined, 'no origin (server-to-server)'],
-    [`https://${prefix}.vercel.app`, 'prod URL'],
-    [`https://${prefix}-abc123-team.vercel.app`, 'preview URL'],
-    ['https://evil-other-prefix.vercel.app', 'other Vercel project'],
-    ['https://evil.com', 'random origin'],
-  ]
-  for (const [origin, label] of cases) {
-    const allowed =
-      !origin ||
-      corsStaticOrigins.has(origin) ||
-      (vercelPrefixPattern !== null && vercelPrefixPattern.test(origin))
-    console.log(`CORS smoke-test [${label}]: ${allowed ? 'ALLOWED' : 'REJECTED'} — ${origin ?? '(none)'}`)
-  }
-}
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001', 10)
@@ -113,7 +108,7 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'data:', 'blob:'],
+        imgSrc: ["'self'", 'data:', 'blob:', ...(r2Origin ? [r2Origin] : [])],
         connectSrc: ["'self'"],
         frameSrc: ["'self'", 'https://payments.yoco.com'],
         objectSrc: ["'none'"],

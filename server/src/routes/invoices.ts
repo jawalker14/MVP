@@ -17,7 +17,7 @@ import { generateInvoiceNumber } from '../utils/invoiceNumber'
 import { formatZAR } from '../utils/formatZAR'
 import { generateInvoicePDF, PdfInvoiceData } from '../services/pdf'
 import { CreateInvoiceSchema, SendInvoiceSchema } from '@invoicekasi/shared'
-import type { CreateInvoice, SendInvoice } from '@invoicekasi/shared'
+import type { CreateInvoice, SendInvoice, InvoiceResponse, SendInvoiceResponse } from '@invoicekasi/shared'
 
 const router = Router()
 
@@ -42,14 +42,21 @@ function calcTotals(
   return { subtotal, vatRate, vatAmount, total, lineTotals }
 }
 
-// Drizzle returns numeric(12,2) columns as strings — parse them to numbers.
+// Drizzle returns numeric columns as strings and timestamps as Date — normalize to wire format.
 function numericInvoice(inv: typeof invoices.$inferSelect) {
   return {
     ...inv,
+    type: inv.type as InvoiceResponse['type'],
+    status: inv.status as InvoiceResponse['status'],
     subtotal: parseFloat(inv.subtotal ?? '0'),
     vatRate: parseFloat(inv.vatRate ?? '0'),
     vatAmount: parseFloat(inv.vatAmount ?? '0'),
     total: parseFloat(inv.total ?? '0'),
+    sentAt: inv.sentAt?.toISOString() ?? null,
+    viewedAt: inv.viewedAt?.toISOString() ?? null,
+    paidAt: inv.paidAt?.toISOString() ?? null,
+    createdAt: (inv.createdAt ?? new Date()).toISOString(),
+    updatedAt: inv.updatedAt?.toISOString() ?? null,
   }
 }
 
@@ -105,6 +112,7 @@ router.get('/:id/public', async (req: Request, res) => {
     invoice.clientId
       ? db
           .select({
+            id: clients.id,
             name: clients.name,
             email: clients.email,
             phoneWhatsapp: clients.phoneWhatsapp,
@@ -126,12 +134,13 @@ router.get('/:id/public', async (req: Request, res) => {
     returnedInvoice = { ...invoice, status: 'viewed', viewedAt: now }
   }
 
-  res.json({
+  const payload: InvoiceResponse = {
     ...numericInvoice(returnedInvoice),
     lineItems: items.map(numericLineItem),
     business: ownerRows[0] ?? null,
     client: clientRows[0] ?? null,
-  })
+  }
+  res.json(payload)
 })
 
 // ─── GET /api/invoices/:id/public/pdf — NO auth ───────────────────────────────
@@ -344,6 +353,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     db
       .select({
         businessName: users.businessName,
+        logoUrl: users.logoUrl,
         addressLine1: users.addressLine1,
         addressLine2: users.addressLine2,
         city: users.city,
@@ -359,12 +369,13 @@ router.get('/:id', async (req: AuthRequest, res) => {
       .limit(1),
   ])
 
-  res.json({
+  const payload: InvoiceResponse = {
     ...numericInvoice(invoice),
     lineItems: items.map(numericLineItem),
     client: clientRows[0] ?? null,
     business: ownerRows[0] ?? null,
-  })
+  }
+  res.json(payload)
 })
 
 // ─── POST /api/invoices ───────────────────────────────────────────────────────
@@ -435,10 +446,11 @@ router.post('/', validateBody(InvoiceBodySchema), async (req: AuthRequest, res) 
       .where(eq(lineItems.invoiceId, result.id))
       .orderBy(lineItems.sortOrder)
 
-    res.status(201).json({
+    const payload: InvoiceResponse = {
       ...numericInvoice(result),
       lineItems: items.map(numericLineItem),
-    })
+    }
+    res.status(201).json(payload)
   } catch (err) {
     if (err instanceof InvoiceLimitReachedError) {
       res.status(403).json({
@@ -668,11 +680,21 @@ router.post('/:id/send', validateBody(SendInvoiceSchema), async (req: AuthReques
     }
   }
 
-  res.json({
-    invoice: numericInvoice(updated),
+  const sentItems = await db
+    .select()
+    .from(lineItems)
+    .where(eq(lineItems.invoiceId, id))
+    .orderBy(lineItems.sortOrder)
+
+  const payload: SendInvoiceResponse = {
+    invoice: {
+      ...numericInvoice(updated),
+      lineItems: sentItems.map(numericLineItem),
+    },
     ...(whatsapp_url ? { whatsapp_url } : {}),
     public_url: publicUrl,
-  })
+  }
+  res.json(payload)
 })
 
 // ─── POST /api/invoices/:id/convert ──────────────────────────────────────────
@@ -766,10 +788,11 @@ router.post('/:id/convert', async (req: AuthRequest, res) => {
       .where(eq(lineItems.invoiceId, newInvoice.id))
       .orderBy(lineItems.sortOrder)
 
-    res.status(201).json({
+    const payload: InvoiceResponse = {
       ...numericInvoice(newInvoice),
       lineItems: items.map(numericLineItem),
-    })
+    }
+    res.status(201).json(payload)
   } catch (err) {
     if (err instanceof InvoiceLimitReachedError) {
       res.status(403).json({

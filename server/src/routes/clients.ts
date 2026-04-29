@@ -7,9 +7,24 @@ import { eq, and, ilike, or, count, asc } from 'drizzle-orm'
 import { z } from 'zod'
 import { normalisePhone } from '../utils/normalisePhone'
 import { CreateClientSchema, UpdateClientSchema } from '@invoicekasi/shared'
+import type { ClientResponse } from '@invoicekasi/shared'
+import type { Client } from '../db/schema'
 
 const router = Router()
 router.use(requireAuth)
+
+function serializeClient(c: Client): ClientResponse {
+  return {
+    id: c.id,
+    name: c.name,
+    email: c.email ?? null,
+    phoneWhatsapp: c.phoneWhatsapp,
+    address: c.address ?? null,
+    notes: c.notes ?? null,
+    createdAt: c.createdAt?.toISOString() ?? null,
+    updatedAt: c.updatedAt?.toISOString() ?? null,
+  }
+}
 
 // GET /api/clients
 router.get('/', async (req: AuthRequest, res) => {
@@ -42,7 +57,7 @@ router.get('/', async (req: AuthRequest, res) => {
   const total = Number(countResult[0]?.count ?? 0)
 
   res.json({
-    clients: rows,
+    clients: rows.map(serializeClient),
     total,
     page,
     totalPages: Math.ceil(total / limit) || 1,
@@ -64,7 +79,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     res.status(404).json({ error: 'Client not found' })
     return
   }
-  res.json(client)
+  res.json(serializeClient(client))
 })
 
 // POST /api/clients
@@ -113,7 +128,7 @@ router.post('/', validateBody(CreateClientSchema), async (req: AuthRequest, res)
     .values({ ...body, phoneWhatsapp: normalisedPhone, userId })
     .returning()
 
-  res.status(201).json(inserted)
+  res.status(201).json(serializeClient(inserted))
 })
 
 // PUT /api/clients/:id
@@ -168,7 +183,7 @@ router.put('/:id', validateBody(UpdateClientSchema), async (req: AuthRequest, re
     .where(and(eq(clients.id, id), eq(clients.userId, userId)))
     .returning()
 
-  res.json(updated)
+  res.json(serializeClient(updated))
 })
 
 // DELETE /api/clients/:id — soft delete
