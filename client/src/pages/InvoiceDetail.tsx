@@ -16,10 +16,8 @@ import type { InvoiceStatus } from '../components/StatusBadge'
 import ConfirmModal from '../components/ConfirmModal'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import { formatZAR } from '../utils/formatZAR'
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+import type { InvoiceResponse } from '@invoicekasi/shared'
+import { API_URL } from '../api/config'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,56 +35,6 @@ function formatDateTime(iso: string | null | undefined): string {
   return `${formatDate(iso)}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface LineItemData {
-  id: string
-  description: string
-  quantity: number
-  unitPrice: number
-  lineTotal: number
-  sortOrder: number
-}
-
-interface InvoiceData {
-  id: string
-  invoiceNumber: string
-  type: string
-  status: string
-  subtotal: number
-  vatRate: number
-  vatAmount: number
-  total: number
-  dueDate: string | null
-  notes: string | null
-  paymentLinkUrl: string | null
-  sentVia: string | null
-  sentAt: string | null
-  viewedAt: string | null
-  paidAt: string | null
-  createdAt: string
-  clientId: string | null
-  lineItems: LineItemData[]
-  client: {
-    id: string
-    name: string
-    email: string | null
-    phoneWhatsapp: string
-  } | null
-  business: {
-    businessName: string | null
-    addressLine1: string | null
-    addressLine2: string | null
-    city: string | null
-    province: string | null
-    postalCode: string | null
-    vatNumber: string | null
-    bankName: string | null
-    bankAccountNumber: string | null
-    bankBranchCode: string | null
-  } | null
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InvoiceDetail() {
@@ -94,7 +42,7 @@ export default function InvoiceDetail() {
   const navigate = useNavigate()
   const { showToast } = useToast()
 
-  const [invoice, setInvoice] = useState<InvoiceData | null>(null)
+  const [invoice, setInvoice] = useState<InvoiceResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -110,7 +58,7 @@ export default function InvoiceDetail() {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await api.get<InvoiceData>(`/api/invoices/${id}`)
+      const { data } = await api.get<InvoiceResponse>(`/api/invoices/${id}`)
       setInvoice(data)
     } catch {
       setError('Invoice not found')
@@ -167,13 +115,12 @@ export default function InvoiceDetail() {
     setActionLoading(true)
     setMenuOpen(false)
     try {
-      const { data } = await api.post<{ invoiceNumber: string }>(`/api/invoices/${id}/convert`)
+      const { data } = await api.post<{ id: string; invoiceNumber: string }>(`/api/invoices/${id}/convert`)
       showToast(`Converted to Invoice ${data.invoiceNumber}`, 'success')
-      await fetchInvoice()
+      navigate(`/invoices/${data.id}`)
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
       showToast(e?.response?.data?.error ?? 'Failed to convert', 'error')
-    } finally {
       setActionLoading(false)
     }
   }
@@ -282,7 +229,7 @@ export default function InvoiceDetail() {
     menuItems.push({ label: 'Download PDF', onClick: handleDownloadPdf })
   }
 
-  if (isQuote) {
+  if (isQuote && !invoice.convertedToInvoiceId) {
     menuItems.push({ label: 'Convert to Invoice', onClick: handleConvert })
   }
   menuItems.push({ label: 'Duplicate', onClick: handleDuplicate })
@@ -372,6 +319,19 @@ export default function InvoiceDetail() {
       {status === 'overdue' && (
         <div className="mx-4 mb-3 rounded-xl px-4 py-3 bg-danger/10 border border-danger/30">
           <p className="text-danger text-sm font-semibold">This invoice is overdue</p>
+        </div>
+      )}
+
+      {/* ── Converted-to-invoice banner ── */}
+      {isQuote && invoice.convertedToInvoiceId && (
+        <div className="mx-4 mb-3 rounded-xl px-4 py-3 bg-accent/10 border border-accent/30 flex items-center justify-between gap-2">
+          <p className="text-accent text-sm font-semibold">Converted to invoice</p>
+          <button
+            onClick={() => navigate(`/invoices/${invoice.convertedToInvoiceId}`)}
+            className="text-accent text-sm underline font-medium active:opacity-70 shrink-0"
+          >
+            View invoice
+          </button>
         </div>
       )}
 

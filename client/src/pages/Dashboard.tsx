@@ -6,25 +6,10 @@ import LoadingSkeleton from '../components/LoadingSkeleton'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
 import { formatZAR } from '../utils/formatZAR'
-import type { InvoiceStatus } from '../components/StatusBadge'
-
-interface DashboardSummary {
-  total_outstanding: number
-  paid_this_month: number
-  overdue_count: number
-  total_clients: number
-}
-
-interface RecentInvoice {
-  id: string
-  invoiceNumber: string
-  clientName: string | null
-  total: number
-  status: InvoiceStatus
-}
+import type { DashboardStats, InvoiceListItem } from '@invoicekasi/shared'
 
 interface InvoicesResponse {
-  invoices: RecentInvoice[]
+  invoices: InvoiceListItem[]
 }
 
 export default function Dashboard() {
@@ -34,7 +19,7 @@ export default function Dashboard() {
   const greeting = user?.businessName?.split(' ')[0] || 'there'
 
   const { data: summary, loading: summaryLoading } =
-    useApi<DashboardSummary>('/api/dashboard/summary')
+    useApi<DashboardStats>('/api/dashboard/summary')
 
   const { data: invoicesRes, loading: invoicesLoading } =
     useApi<InvoicesResponse>('/api/invoices?limit=5&page=1')

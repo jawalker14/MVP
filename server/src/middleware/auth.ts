@@ -23,7 +23,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   const secret = process.env.JWT_SECRET!
 
   try {
-    const payload = jwt.verify(token, secret) as JwtPayload
+    const payload = jwt.verify(token, secret, { algorithms: ['HS256'], issuer: 'invoicekasi', audience: 'invoicekasi-app' }) as JwtPayload
     req.user = { sub: payload.sub, email: payload.email, plan: payload.plan }
     req.userId = payload.sub // backward compat
     next()

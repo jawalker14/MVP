@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../api/client'
-import type { User } from '../contexts/AuthContext'
+import type { AuthResponse, UserResponse } from '@invoicekasi/shared'
 
 export default function Verify() {
   const [searchParams] = useSearchParams()
@@ -23,28 +23,9 @@ export default function Verify() {
     window.history.replaceState({}, '', '/auth/verify')
 
     api
-      .post('/api/auth/verify-magic-link', { token, email })
+      .post<AuthResponse>('/api/auth/verify-magic-link', { token, email })
       .then(({ data }) => {
-        const user: User | null = data.isNewUser
-          ? null
-          : {
-              id: data.user.id,
-              email: data.user.email,
-              businessName: data.user.businessName ?? null,
-              phone: data.user.phone ?? null,
-              plan: data.user.plan ?? null,
-              vatNumber: data.user.vatNumber ?? null,
-              logoUrl: data.user.logoUrl ?? null,
-              addressLine1: data.user.addressLine1 ?? null,
-              addressLine2: data.user.addressLine2 ?? null,
-              city: data.user.city ?? null,
-              province: data.user.province ?? null,
-              postalCode: data.user.postalCode ?? null,
-              bankName: data.user.bankName ?? null,
-              bankAccountNumber: data.user.bankAccountNumber ?? null,
-              bankBranchCode: data.user.bankBranchCode ?? null,
-              invoiceCountThisMonth: data.user.invoiceCountThisMonth ?? null,
-            }
+        const user: UserResponse | null = data.isNewUser ? null : (data.user ?? null)
 
         login(data.accessToken, data.refreshToken, user)
 

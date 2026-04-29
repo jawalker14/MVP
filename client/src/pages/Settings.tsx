@@ -7,7 +7,6 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import api from '../api/client'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 const SA_PROVINCES = [
   'Eastern Cape',
@@ -129,9 +128,7 @@ export default function Settings() {
 
   // ── Logo ──────────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [logoPreview, setLogoPreview] = useState<string | null>(
-    user?.logoUrl ? `${API_URL}${user.logoUrl}` : null,
-  )
+  const [logoPreview, setLogoPreview] = useState<string | null>(user?.logoUrl ?? null)
   const [logoUploading, setLogoUploading] = useState(false)
 
   // ── Plan & Usage ──────────────────────────────────────────────────────────
@@ -176,7 +173,7 @@ export default function Settings() {
       bank_account_number: user.bankAccountNumber ?? '',
       bank_branch_code: user.bankBranchCode ?? '',
     })
-    if (user.logoUrl) setLogoPreview(`${API_URL}${user.logoUrl}`)
+    if (user.logoUrl) setLogoPreview(user.logoUrl)
   }, [user])
 
   // Fetch client count for usage bar
@@ -288,7 +285,7 @@ export default function Settings() {
       })
       .then(({ data }) => {
         updateUser({ ...user!, logoUrl: data.logo_url })
-        setLogoPreview(`${API_URL}${data.logo_url}`)
+        setLogoPreview(data.logo_url)
         showToast('Logo uploaded')
       })
       .catch(() => showToast('Logo upload failed', 'error'))

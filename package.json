@@ -2,6 +2,7 @@
   "name": "invoicekasi",
   "version": "1.0.0",
   "private": true,
+  "workspaces": ["client", "server", "shared"],
   "scripts": {
     "dev": "concurrently --names client,server --prefix-colors cyan,yellow \"npm run dev --prefix client\" \"npm run dev --prefix server\"",
     "build": "npm run build --prefix client && npm run build --prefix server",

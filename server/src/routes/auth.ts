@@ -1,7 +1,5 @@
 import { Router } from 'express'
 import crypto from 'crypto'
-import path from 'path'
-import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import multer from 'multer'
@@ -12,28 +10,24 @@ import { validateBody } from '../middleware/validate'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 import { eq, and, gt, gte, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { uploadLogo, deleteLogo } from '../services/storage'
+import {
+  RequestMagicLinkSchema,
+  VerifyMagicLinkSchema,
+  RefreshTokenSchema,
+} from '@invoicekasi/shared'
 
 const router = Router()
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
-
-const RequestMagicLinkSchema = z.object({
-  email: z.string().email(),
-})
-
-const VerifyMagicLinkSchema = z.object({
-  email: z.string().email(),
-  token: z.string().min(1),
-})
 
 const CompleteOnboardingSchema = z.object({
   business_name: z.string().min(1),
   phone: z.string().min(10),
 })
 
-const RefreshSchema = z.object({
-  refreshToken: z.string().min(1),
-})
+// RefreshTokenSchema from shared; alias locally to keep handler code unchanged
+const RefreshSchema = RefreshTokenSchema
 
 const LogoutSchema = z.object({
   refreshToken: z.string().min(1),
@@ -54,7 +48,10 @@ function sha256(value: string): string {
 
 function signAccessToken(userId: string, email: string, plan: string): string {
   return jwt.sign({ sub: userId, email, plan }, process.env.JWT_SECRET!, {
+    algorithm: 'HS256',
     expiresIn: ACCESS_TOKEN_TTL,
+    issuer: 'invoicekasi',
+    audience: 'invoicekasi-app',
   })
 }
 
@@ -368,20 +365,13 @@ router.put(
 
 // ─── POST /api/auth/logo ──────────────────────────────────────────────────────
 
-const logoStorage = multer.diskStorage({
-  destination: (req: AuthRequest, _file, cb) => {
-    const dir = path.join(__dirname, '../../uploads', req.user!.sub)
-    fs.mkdirSync(dir, { recursive: true })
-    cb(null, dir)
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase()
-    cb(null, `${crypto.randomUUID()}${ext}`)
-  },
-})
+const MAGIC_BYTES: Record<string, Buffer> = {
+  'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  'image/jpeg': Buffer.from([0xff, 0xd8, 0xff]),
+}
 
 const logoUpload = multer({
-  storage: logoStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === 'image/png' || file.mimetype === 'image/jpeg') {
@@ -402,7 +392,20 @@ router.post(
       return
     }
 
-    const logoUrl = `/uploads/${req.user!.sub}/${req.file.filename}`
+    const expected = MAGIC_BYTES[req.file.mimetype]
+    if (!expected || !req.file.buffer.subarray(0, expected.length).equals(expected)) {
+      res.status(400).json({ error: 'File content does not match declared image type' })
+      return
+    }
+
+    const [existing] = await db.select({ logoUrl: users.logoUrl }).from(users).where(eq(users.id, req.user!.sub)).limit(1)
+    const oldUrl = existing?.logoUrl ?? null
+
+    const logoUrl = await uploadLogo(
+      req.user!.sub,
+      req.file.buffer,
+      req.file.mimetype as 'image/png' | 'image/jpeg',
+    )
 
     const [updated] = await db
       .update(users)
@@ -414,6 +417,8 @@ router.post(
       res.status(404).json({ error: 'User not found' })
       return
     }
+
+    if (oldUrl) void deleteLogo(oldUrl)
 
     res.json({ logo_url: logoUrl })
   },

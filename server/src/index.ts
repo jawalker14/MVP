@@ -15,7 +15,7 @@ import invoicesRouter from './routes/invoices'
 import dashboardRouter from './routes/dashboard'
 import webhooksRouter from './routes/webhooks'
 
-const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'CLIENT_URL'] as const
+const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'CLIENT_URL', 'R2_PUBLIC_BASE_URL'] as const
 
 function validateEnv(): void {
   const isProd = process.env.NODE_ENV === 'production'
@@ -159,11 +159,6 @@ app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhooksRout
 
 app.use(express.json({ limit: '10mb' }))
 
-// ─── Static files ─────────────────────────────────────────────────────────────
-
-// Serve uploaded logos (stored in server/uploads/)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
-
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req, res) => {
@@ -182,7 +177,7 @@ if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist))
   // SPA fallback — all non-API routes serve index.html
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
+    if (req.path.startsWith('/api/')) {
       return next()
     }
     res.sendFile(path.join(clientDist, 'index.html'))
@@ -197,7 +192,11 @@ app.use((_req, res) => {
 
 // ─── Error handler ────────────────────────────────────────────────────────────
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error & { code?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err.code === '23505') {
+    res.status(409).json({ error: 'Conflict', code: 'DUPLICATE' })
+    return
+  }
   console.error(err)
   res.status(500).json({ error: 'Internal server error' })
 })

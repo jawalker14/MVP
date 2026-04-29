@@ -2,10 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Lock, CheckCircle, Download } from 'lucide-react'
 import { formatZAR } from '../utils/formatZAR'
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+import type { InvoiceResponse } from '@invoicekasi/shared'
+import { API_URL } from '../api/config'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,51 +15,6 @@ function formatDate(iso: string | null | undefined): string {
   return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface LineItemData {
-  id: string
-  description: string
-  quantity: number
-  unitPrice: number
-  lineTotal: number
-  sortOrder: number
-}
-
-interface PublicInvoice {
-  id: string
-  invoiceNumber: string
-  type: string
-  status: string
-  subtotal: number
-  vatRate: number
-  vatAmount: number
-  total: number
-  dueDate: string | null
-  notes: string | null
-  paymentLinkUrl: string | null
-  createdAt: string
-  lineItems: LineItemData[]
-  client: {
-    name: string
-    email: string | null
-    phoneWhatsapp: string
-  } | null
-  business: {
-    businessName: string | null
-    logoUrl: string | null
-    addressLine1: string | null
-    addressLine2: string | null
-    city: string | null
-    province: string | null
-    postalCode: string | null
-    vatNumber: string | null
-    bankName: string | null
-    bankAccountNumber: string | null
-    bankBranchCode: string | null
-  } | null
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InvoicePublic() {
@@ -69,7 +22,7 @@ export default function InvoicePublic() {
   const [searchParams] = useSearchParams()
   const paymentStatus = searchParams.get('payment') as 'success' | 'cancelled' | 'failed' | null
 
-  const [invoice, setInvoice] = useState<PublicInvoice | null>(null)
+  const [invoice, setInvoice] = useState<InvoiceResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -78,7 +31,7 @@ export default function InvoicePublic() {
     fetch(`${API_URL}/api/invoices/${id}/public`)
       .then((r) => {
         if (!r.ok) throw new Error('Not found')
-        return r.json() as Promise<PublicInvoice>
+        return r.json() as Promise<InvoiceResponse>
       })
       .then(setInvoice)
       .catch(() => setError('Invoice not found'))
@@ -159,7 +112,7 @@ export default function InvoicePublic() {
       <div className="flex items-center gap-3 px-4 py-4" style={{ backgroundColor: '#e8b931' }}>
         {invoice.business?.logoUrl ? (
           <img
-            src={`${API_URL}${invoice.business.logoUrl}`}
+            src={invoice.business.logoUrl}
             alt={businessName}
             className="w-8 h-8 rounded-lg object-cover shrink-0"
             style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}

@@ -6,19 +6,10 @@ import { validateBody } from '../middleware/validate'
 import { eq, and, ilike, or, count, asc } from 'drizzle-orm'
 import { z } from 'zod'
 import { normalisePhone } from '../utils/normalisePhone'
+import { CreateClientSchema, UpdateClientSchema } from '@invoicekasi/shared'
 
 const router = Router()
 router.use(requireAuth)
-
-const CreateClientSchema = z.object({
-  name: z.string().min(1).max(255),
-  phoneWhatsapp: z.string().min(10),
-  email: z.string().email().nullable().optional(),
-  address: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
-})
-
-const UpdateClientSchema = CreateClientSchema.partial()
 
 // GET /api/clients
 router.get('/', async (req: AuthRequest, res) => {

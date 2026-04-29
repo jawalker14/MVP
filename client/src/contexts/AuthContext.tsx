@@ -9,6 +9,7 @@ import React, {
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { setAccessToken, setLogoutHandler } from '../api/client'
+import { API_URL as BASE_URL } from '../api/config'
 
 export interface User {
   id: string
@@ -40,7 +41,6 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)

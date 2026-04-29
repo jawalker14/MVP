@@ -13,36 +13,18 @@ import {
   getTableColumns,
 } from 'drizzle-orm'
 import { consumeInvoiceCredit, InvoiceLimitReachedError } from '../utils/freeTierGate'
-import { z } from 'zod'
 import { generateInvoiceNumber } from '../utils/invoiceNumber'
 import { formatZAR } from '../utils/formatZAR'
 import { generateInvoicePDF, PdfInvoiceData } from '../services/pdf'
+import { CreateInvoiceSchema, SendInvoiceSchema } from '@invoicekasi/shared'
+import type { CreateInvoice, SendInvoice } from '@invoicekasi/shared'
 
 const router = Router()
 
-// ─── Schemas ──────────────────────────────────────────────────────────────────
+// ─── Local alias for the validated invoice body ────────────────────────────────
 
-const LineItemSchema = z.object({
-  description: z.string().min(1, 'Description is required').max(500),
-  quantity: z.number().positive('Quantity must be greater than 0'),
-  unitPrice: z.number().nonnegative('Unit price must be 0 or greater'),
-  sortOrder: z.number().int().nonnegative().default(0),
-})
-
-const InvoiceBodySchema = z.object({
-  clientId: z.string().uuid(),
-  type: z.enum(['invoice', 'quote']).default('invoice'),
-  dueDate: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
-  vatEnabled: z.boolean(),
-  lineItems: z.array(LineItemSchema).min(1, 'At least one line item is required'),
-})
-
-const SendSchema = z.object({
-  via: z.enum(['whatsapp', 'email', 'both']),
-})
-
-type InvoiceBody = z.infer<typeof InvoiceBodySchema>
+const InvoiceBodySchema = CreateInvoiceSchema
+type InvoiceBody = CreateInvoice
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -405,7 +387,6 @@ router.post('/', validateBody(InvoiceBodySchema), async (req: AuthRequest, res) 
     return
   }
 
-  const invoiceNumber = await generateInvoiceNumber(userId, body.type)
   const { subtotal, vatRate, vatAmount, total, lineTotals } = calcTotals(
     body.lineItems,
     body.vatEnabled,
@@ -415,6 +396,8 @@ router.post('/', validateBody(InvoiceBodySchema), async (req: AuthRequest, res) 
     const result = await db.transaction(async (tx) => {
       const credit = await consumeInvoiceCredit(tx, userId)
       if (!credit.ok) throw new InvoiceLimitReachedError()
+
+      const invoiceNumber = await generateInvoiceNumber(tx, userId, body.type)
 
       const [invoice] = await tx
         .insert(invoices)
@@ -584,10 +567,10 @@ router.delete('/:id', async (req: AuthRequest, res) => {
 
 // ─── POST /api/invoices/:id/send ──────────────────────────────────────────────
 
-router.post('/:id/send', validateBody(SendSchema), async (req: AuthRequest, res) => {
+router.post('/:id/send', validateBody(SendInvoiceSchema), async (req: AuthRequest, res) => {
   const id = req.params['id'] as string
   const userId = req.userId!
-  const body = req.body as z.infer<typeof SendSchema>
+  const body = req.body as SendInvoice
 
   const [invoice] = await db
     .select()
@@ -698,37 +681,95 @@ router.post('/:id/convert', async (req: AuthRequest, res) => {
   const id = req.params['id'] as string
   const userId = req.userId!
 
-  const [invoice] = await db
+  const [quote] = await db
     .select()
     .from(invoices)
     .where(and(eq(invoices.id, id), eq(invoices.userId, userId)))
     .limit(1)
 
-  if (!invoice) {
+  if (!quote) {
     res.status(404).json({ error: 'Invoice not found' })
     return
   }
 
-  if (invoice.type !== 'quote') {
+  if (quote.type !== 'quote') {
     res.status(400).json({ error: 'Only quotes can be converted to invoices' })
     return
   }
 
-  const invoiceNumber = await generateInvoiceNumber(userId, 'invoice')
+  if (quote.convertedToInvoiceId) {
+    res.status(400).json({ error: 'This quote has already been converted', code: 'ALREADY_CONVERTED' })
+    return
+  }
 
   try {
-    const [updated] = await db.transaction(async (tx) => {
+    const newInvoice = await db.transaction(async (tx) => {
       const credit = await consumeInvoiceCredit(tx, userId)
       if (!credit.ok) throw new InvoiceLimitReachedError()
 
-      return tx
-        .update(invoices)
-        .set({ type: 'invoice', status: 'draft', invoiceNumber, updatedAt: new Date() })
-        .where(eq(invoices.id, id))
+      const invoiceNumber = await generateInvoiceNumber(tx, userId, 'invoice')
+
+      const [created] = await tx
+        .insert(invoices)
+        .values({
+          userId: quote.userId,
+          clientId: quote.clientId,
+          invoiceNumber,
+          type: 'invoice',
+          status: 'draft',
+          subtotal: quote.subtotal,
+          vatRate: quote.vatRate,
+          vatAmount: quote.vatAmount,
+          total: quote.total,
+          currency: quote.currency,
+          dueDate: quote.dueDate,
+          notes: quote.notes,
+          sentVia: null,
+          sentAt: null,
+          viewedAt: null,
+          paidAt: null,
+          paymentLinkUrl: null,
+          paymentReference: null,
+        })
         .returning()
+
+      const originalItems = await tx
+        .select()
+        .from(lineItems)
+        .where(eq(lineItems.invoiceId, id))
+        .orderBy(lineItems.sortOrder)
+
+      if (originalItems.length > 0) {
+        await tx.insert(lineItems).values(
+          originalItems.map((item) => ({
+            invoiceId: created.id,
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            lineTotal: item.lineTotal,
+            sortOrder: item.sortOrder,
+          })),
+        )
+      }
+
+      await tx
+        .update(invoices)
+        .set({ convertedToInvoiceId: created.id, updatedAt: new Date() })
+        .where(eq(invoices.id, id))
+
+      return created
     })
 
-    res.json(numericInvoice(updated))
+    const items = await db
+      .select()
+      .from(lineItems)
+      .where(eq(lineItems.invoiceId, newInvoice.id))
+      .orderBy(lineItems.sortOrder)
+
+    res.status(201).json({
+      ...numericInvoice(newInvoice),
+      lineItems: items.map(numericLineItem),
+    })
   } catch (err) {
     if (err instanceof InvoiceLimitReachedError) {
       res.status(403).json({

@@ -114,6 +114,7 @@ export const invoices = pgTable(
     sentAt: timestamp('sent_at', { withTimezone: true }),
     viewedAt: timestamp('viewed_at', { withTimezone: true }),
     paidAt: timestamp('paid_at', { withTimezone: true }),
+    convertedToInvoiceId: uuid('converted_to_invoice_id').references((): any => invoices.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true }).default(sql`now()`),
   },
