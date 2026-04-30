@@ -36,3 +36,6 @@ server/uploads/
 # PWA generated service worker files
 **/public/sw.js
 **/public/workbox-*.js
+
+# Claude Code local settings
+.claude/
