@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import crypto from 'crypto'
+import { apiError } from '../utils/errors'
 import { db } from '../db'
 import { invoices, webhookEvents } from '../db/schema'
 import { eq } from 'drizzle-orm'
@@ -24,14 +25,14 @@ router.post('/yoco', async (req: Request, res: Response) => {
   const sigHeader = req.headers['webhook-signature'] as string | undefined
 
   if (!webhookId || !timestamp || !sigHeader) {
-    res.status(400).json({ error: 'Missing webhook signing headers' })
+    apiError(res, 400, 'Missing webhook signing headers', 'MISSING_HEADERS')
     return
   }
 
   // ── 2. Replay prevention (5-minute window) ────────────────────────────────
   const tsMs = parseInt(timestamp, 10) * 1000
   if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) {
-    res.status(400).json({ error: 'Webhook timestamp out of acceptable range' })
+    apiError(res, 400, 'Webhook timestamp out of acceptable range', 'TIMESTAMP_OUT_OF_RANGE')
     return
   }
 
@@ -64,7 +65,7 @@ router.post('/yoco', async (req: Request, res: Response) => {
   })
 
   if (!verified) {
-    res.status(401).json({ error: 'Invalid webhook signature' })
+    apiError(res, 401, 'Invalid webhook signature', 'INVALID_SIGNATURE')
     return
   }
 

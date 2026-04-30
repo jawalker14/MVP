@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 import PageHeader from '../components/PageHeader'
 import { useToast } from '../contexts/ToastContext'
 
@@ -58,9 +58,8 @@ export default function ClientNew() {
       showToast('Client added', 'success')
       navigate('/clients')
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { error?: string } } }
-      const status = e?.response?.status
-      const message = e?.response?.data?.error ?? 'Something went wrong'
+      const { error: message } = extractApiError(err)
+      const status = (err as any)?.response?.status
       if (status === 409) {
         setErrors({ phoneWhatsapp: message })
       } else {

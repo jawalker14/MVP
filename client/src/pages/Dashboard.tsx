@@ -5,7 +5,7 @@ import { useApi } from '../hooks/useApi'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 import type { DashboardStats, InvoiceListItem } from '@invoicekasi/shared'
 
 interface InvoicesResponse {

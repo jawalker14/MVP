@@ -79,3 +79,13 @@ api.interceptors.response.use(
 )
 
 export default api
+
+export function extractApiError(err: unknown): { error: string; code?: string } {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const data = (err as any).response?.data
+    if (data && typeof data === 'object' && typeof data.error === 'string') {
+      return { error: data.error, code: data.code }
+    }
+  }
+  return { error: 'Something went wrong' }
+}

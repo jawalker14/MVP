@@ -1,11 +1,11 @@
 import React, { useReducer, useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Loader2 } from 'lucide-react'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
 import PageHeader from '../components/PageHeader'
 import LoadingSkeleton from '../components/LoadingSkeleton'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 
 // ─── Style constants ──────────────────────────────────────────────────────────
 
@@ -567,7 +567,7 @@ export default function InvoiceEdit() {
       })
       .catch(() => setFetchError('Invoice not found'))
       .finally(() => setFetchLoading(false))
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps -- id is the only reactive dep; navigate, showToast, dispatch, and state setters are stable refs
 
   const handleSave = useCallback(async () => {
     if (!id || !invoiceData) return
@@ -596,8 +596,7 @@ export default function InvoiceEdit() {
       showToast('Invoice updated', 'success')
       navigate(`/invoices/${id}`)
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to save', 'error')
+      showToast(extractApiError(err).error, 'error')
       dispatch({ type: 'SET_SUBMITTING', value: false })
     }
   }, [id, invoiceData, state, navigate, showToast])

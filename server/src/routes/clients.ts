@@ -1,11 +1,12 @@
 import { Router } from 'express'
+import { apiError } from '../utils/errors'
 import { db } from '../db'
 import { clients, users } from '../db/schema'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 import { validateBody } from '../middleware/validate'
 import { eq, and, ilike, or, count, asc } from 'drizzle-orm'
 import { z } from 'zod'
-import { normalisePhone } from '../utils/normalisePhone'
+import { normalisePhone, InvalidPhoneError } from '../utils/normalisePhone'
 import { CreateClientSchema, UpdateClientSchema } from '@invoicekasi/shared'
 import type { ClientResponse } from '@invoicekasi/shared'
 import type { Client } from '../db/schema'
@@ -76,7 +77,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!client) {
-    res.status(404).json({ error: 'Client not found' })
+    apiError(res, 404, 'Client not found', 'CLIENT_NOT_FOUND')
     return
   }
   res.json(serializeClient(client))
@@ -97,15 +98,21 @@ router.post('/', validateBody(CreateClientSchema), async (req: AuthRequest, res)
       .where(and(eq(clients.userId, userId), eq(clients.isDeleted, false)))
 
     if (Number(clientCount) >= 5) {
-      res.status(403).json({
-        error: 'Free plan limited to 5 clients. Upgrade to Premium for unlimited clients.',
-        code: 'CLIENT_LIMIT_REACHED',
-      })
+      apiError(res, 403, 'Free plan limited to 5 clients. Upgrade to Premium for unlimited clients.', 'CLIENT_LIMIT_REACHED')
       return
     }
   }
 
-  const normalisedPhone = normalisePhone(body.phoneWhatsapp)
+  let normalisedPhone: string
+  try {
+    normalisedPhone = normalisePhone(body.phoneWhatsapp)
+  } catch (err) {
+    if (err instanceof InvalidPhoneError) {
+      res.status(400).json({ error: err.message, code: 'INVALID_PHONE' })
+      return
+    }
+    throw err
+  }
 
   // Duplicate phone check
   const [existing] = await db
@@ -121,7 +128,7 @@ router.post('/', validateBody(CreateClientSchema), async (req: AuthRequest, res)
     .limit(1)
 
   if (existing) {
-    res.status(409).json({ error: 'A client with this WhatsApp number already exists.' })
+    apiError(res, 409, 'A client with this WhatsApp number already exists.', 'DUPLICATE_PHONE')
     return
   }
 
@@ -147,7 +154,7 @@ router.put('/:id', validateBody(UpdateClientSchema), async (req: AuthRequest, re
     .limit(1)
 
   if (!owned) {
-    res.status(404).json({ error: 'Client not found' })
+    apiError(res, 404, 'Client not found', 'CLIENT_NOT_FOUND')
     return
   }
 
@@ -157,7 +164,16 @@ router.put('/:id', validateBody(UpdateClientSchema), async (req: AuthRequest, re
   }
 
   if (body.phoneWhatsapp) {
-    const normalisedPhone = normalisePhone(body.phoneWhatsapp)
+    let normalisedPhone: string
+    try {
+      normalisedPhone = normalisePhone(body.phoneWhatsapp)
+    } catch (err) {
+      if (err instanceof InvalidPhoneError) {
+        res.status(400).json({ error: err.message, code: 'INVALID_PHONE' })
+        return
+      }
+      throw err
+    }
     setValues.phoneWhatsapp = normalisedPhone
 
     // Duplicate check (exclude self)
@@ -174,7 +190,7 @@ router.put('/:id', validateBody(UpdateClientSchema), async (req: AuthRequest, re
       .limit(1)
 
     if (dup && dup.id !== id) {
-      res.status(409).json({ error: 'A client with this WhatsApp number already exists.' })
+      apiError(res, 409, 'A client with this WhatsApp number already exists.', 'DUPLICATE_PHONE')
       return
     }
   }
@@ -200,7 +216,7 @@ router.delete('/:id', async (req: AuthRequest, res) => {
     .returning({ id: clients.id })
 
   if (!deleted) {
-    res.status(404).json({ error: 'Client not found' })
+    apiError(res, 404, 'Client not found', 'CLIENT_NOT_FOUND')
     return
   }
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   MoreVertical,
@@ -12,13 +12,13 @@ import {
   Copy,
   X,
 } from 'lucide-react'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
 import StatusBadge from '../components/StatusBadge'
 import type { InvoiceStatus } from '../components/StatusBadge'
 import ConfirmModal from '../components/ConfirmModal'
 import LoadingSkeleton from '../components/LoadingSkeleton'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 import type { InvoiceResponse } from '@invoicekasi/shared'
 import { API_URL } from '../api/config'
 
@@ -54,11 +54,7 @@ export default function InvoiceDetail() {
   const [refreshedUrl, setRefreshedUrl] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    fetchInvoice()
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function fetchInvoice() {
+  const fetchInvoice = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -69,7 +65,11 @@ export default function InvoiceDetail() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
+
+  useEffect(() => {
+    fetchInvoice()
+  }, [fetchInvoice])
 
   async function handleSend(via: 'whatsapp' | 'email') {
     if (!id || actionLoading) return
@@ -91,8 +91,7 @@ export default function InvoiceDetail() {
       }
       await fetchInvoice()
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to send invoice', 'error')
+      showToast(extractApiError(err).error, 'error')
     } finally {
       setActionLoading(false)
     }
@@ -107,8 +106,7 @@ export default function InvoiceDetail() {
       showToast('Invoice marked as paid', 'success')
       await fetchInvoice()
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to mark as paid', 'error')
+      showToast(extractApiError(err).error, 'error')
     } finally {
       setActionLoading(false)
     }
@@ -123,8 +121,7 @@ export default function InvoiceDetail() {
       showToast(`Converted to Invoice ${data.invoiceNumber}`, 'success')
       navigate(`/invoices/${data.id}`)
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to convert', 'error')
+      showToast(extractApiError(err).error, 'error')
       setActionLoading(false)
     }
   }
@@ -137,8 +134,7 @@ export default function InvoiceDetail() {
       showToast('Invoice deleted', 'success')
       navigate('/invoices')
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to delete', 'error')
+      showToast(extractApiError(err).error, 'error')
       setActionLoading(false)
     }
   }
@@ -174,8 +170,7 @@ export default function InvoiceDetail() {
       showToast('Invoice duplicated', 'success')
       navigate(`/invoices/${data.id}`)
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to duplicate', 'error')
+      showToast(extractApiError(err).error, 'error')
       setActionLoading(false)
     }
   }
@@ -189,8 +184,7 @@ export default function InvoiceDetail() {
       showToast('Public link revoked', 'success')
       await fetchInvoice()
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to revoke link', 'error')
+      showToast(extractApiError(err).error, 'error')
     } finally {
       setActionLoading(false)
     }
@@ -205,8 +199,7 @@ export default function InvoiceDetail() {
       setRefreshedUrl(data.publicUrl)
       await fetchInvoice()
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Failed to regenerate link', 'error')
+      showToast(extractApiError(err).error, 'error')
     } finally {
       setActionLoading(false)
     }

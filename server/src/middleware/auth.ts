@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import { apiError } from '../utils/errors'
 
 export interface JwtPayload {
   sub: string
@@ -14,7 +15,7 @@ export interface AuthRequest extends Request {
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization
   if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Unauthorized' })
+    apiError(res, 401, 'Unauthorized', 'UNAUTHORIZED')
     return
   }
 
@@ -27,6 +28,6 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
     req.userId = payload.sub // backward compat
     next()
   } catch {
-    res.status(401).json({ error: 'Unauthorized' })
+    apiError(res, 401, 'Unauthorized', 'UNAUTHORIZED')
   }
 }

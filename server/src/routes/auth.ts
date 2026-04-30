@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express'
+import { apiError } from '../utils/errors'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
@@ -102,7 +103,7 @@ router.post(
     const resendKey = process.env.RESEND_API_KEY
     if (process.env.NODE_ENV === 'production' && !resendKey) {
       console.error('RESEND_API_KEY not configured — cannot send magic link in production')
-      res.status(503).json({ error: 'Email service not configured. Please contact support.' })
+      apiError(res, 503, 'Email service not configured. Please contact support.', 'SERVICE_UNAVAILABLE')
       return
     }
 
@@ -188,7 +189,7 @@ router.post(
       .limit(1)
 
     if (!link) {
-      res.status(401).json({ error: 'Invalid or expired magic link' })
+      apiError(res, 401, 'Invalid or expired magic link', 'MAGIC_LINK_INVALID')
       return
     }
 
@@ -239,7 +240,7 @@ router.post(
       .returning()
 
     if (!updated) {
-      res.status(404).json({ error: 'User not found' })
+      apiError(res, 404, 'User not found', 'USER_NOT_FOUND')
       return
     }
 
@@ -263,7 +264,7 @@ router.post('/refresh', validateBody(RefreshSchema), async (req, res) => {
   const secret = dot !== -1 ? refreshToken.slice(dot + 1) : ''
 
   if (!tokenId || !secret) {
-    res.status(401).json({ error: 'Invalid or expired refresh token' })
+    apiError(res, 401, 'Invalid or expired refresh token', 'REFRESH_TOKEN_INVALID')
     return
   }
 
@@ -274,7 +275,7 @@ router.post('/refresh', validateBody(RefreshSchema), async (req, res) => {
     .limit(1)
 
   if (!row || !(await bcrypt.compare(secret, row.tokenHash))) {
-    res.status(401).json({ error: 'Invalid or expired refresh token' })
+    apiError(res, 401, 'Invalid or expired refresh token', 'REFRESH_TOKEN_INVALID')
     return
   }
 
@@ -283,7 +284,7 @@ router.post('/refresh', validateBody(RefreshSchema), async (req, res) => {
 
   const [user] = await db.select().from(users).where(eq(users.id, row.userId)).limit(1)
   if (!user) {
-    res.status(401).json({ error: 'Invalid or expired refresh token' })
+    apiError(res, 401, 'Invalid or expired refresh token', 'REFRESH_TOKEN_INVALID')
     return
   }
 
@@ -355,7 +356,7 @@ router.put(
       .returning()
 
     if (!updated) {
-      res.status(404).json({ error: 'User not found' })
+      apiError(res, 404, 'User not found', 'USER_NOT_FOUND')
       return
     }
 
@@ -405,14 +406,14 @@ function logoUploadMiddleware(req: AuthRequest, res: Response, next: NextFunctio
     if (err) {
       if (err instanceof MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-          res.status(413).json({ error: 'File too large (max 2MB)', code: 'FILE_TOO_LARGE' })
+          apiError(res, 413, 'File too large (max 2MB)', 'FILE_TOO_LARGE')
           return
         }
-        res.status(400).json({ error: err.message, code: err.code })
+        apiError(res, 400, err.message, err.code)
         return
       }
       // fileFilter rejection or other
-      res.status(400).json({ error: err.message ?? 'Upload failed', code: 'UPLOAD_FAILED' })
+      apiError(res, 400, err.message ?? 'Upload failed', 'UPLOAD_FAILED')
       return
     }
     next()
@@ -425,13 +426,13 @@ router.post(
   logoUploadMiddleware,
   async (req: AuthRequest, res) => {
     if (!req.file) {
-      res.status(400).json({ error: 'No file uploaded' })
+      apiError(res, 400, 'No file uploaded', 'NO_FILE')
       return
     }
 
     const expected = MAGIC_BYTES[req.file.mimetype]
     if (!expected || !req.file.buffer.subarray(0, expected.length).equals(expected)) {
-      res.status(400).json({ error: 'File content does not match declared image type' })
+      apiError(res, 400, 'File content does not match declared image type', 'INVALID_FILE_CONTENT')
       return
     }
 
@@ -451,7 +452,7 @@ router.post(
       .returning()
 
     if (!updated) {
-      res.status(404).json({ error: 'User not found' })
+      apiError(res, 404, 'User not found', 'USER_NOT_FOUND')
       return
     }
 
@@ -476,7 +477,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   const [user] = await db.select().from(users).where(eq(users.id, req.user!.sub)).limit(1)
 
   if (!user) {
-    res.status(404).json({ error: 'User not found' })
+    apiError(res, 404, 'User not found', 'USER_NOT_FOUND')
     return
   }
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 import type { User } from '../contexts/AuthContext'
 
 export default function Onboarding() {
@@ -48,11 +48,7 @@ export default function Onboarding() {
       updateUser(user)
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-          : undefined
-      showToast(msg ?? 'Failed to save. Please try again.', 'error')
+      showToast(extractApiError(err).error, 'error')
     } finally {
       setLoading(false)
     }

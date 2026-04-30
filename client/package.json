@@ -10,6 +10,9 @@
     "lint": "eslint .",
     "preview": "vite preview"
   },
+  "engines": {
+    "node": ">=20.10.0 <23.0.0"
+  },
   "dependencies": {
     "@invoicekasi/shared": "*",
     "axios": "^1.14.0",

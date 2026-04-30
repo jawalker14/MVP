@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Lock, CheckCircle, Download } from 'lucide-react'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 import type { InvoiceResponse } from '@invoicekasi/shared'
 import { API_URL } from '../api/config'
 

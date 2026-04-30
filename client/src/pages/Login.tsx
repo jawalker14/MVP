@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Loader2, Mail } from 'lucide-react'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 
 export default function Login() {
   const apiUrl = import.meta.env.VITE_API_URL
@@ -38,11 +38,7 @@ export default function Login() {
       import('./Dashboard')
       import('./Onboarding')
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-          : undefined
-      setError(msg ?? 'Something went wrong. Please try again.')
+      setError(extractApiError(err).error)
     } finally {
       setLoading(false)
     }

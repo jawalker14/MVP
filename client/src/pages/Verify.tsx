@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 import type { AuthResponse, UserResponse } from '@invoicekasi/shared'
 
 export default function Verify() {
@@ -38,14 +38,9 @@ export default function Verify() {
         }
       })
       .catch((err: unknown) => {
-        const msg =
-          err && typeof err === 'object' && 'response' in err
-            ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-            : undefined
-        setError(msg ?? 'This link has expired or is invalid.')
+        setError(extractApiError(err).error)
       })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount; token consumed immediately and URL cleared after first parse
 
   return (
     <div className="min-h-screen bg-primary flex flex-col items-center justify-center px-6 text-center">

@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import { Router, Request } from 'express'
+import { apiError } from '../utils/errors'
 import { db } from '../db'
 import { invoices, lineItems, clients, users } from '../db/schema'
 import { requireAuth, AuthRequest } from '../middleware/auth'
@@ -17,7 +18,7 @@ import {
 import { consumeInvoiceCredit, InvoiceLimitReachedError } from '../utils/freeTierGate'
 import { generateInvoiceNumber } from '../utils/invoiceNumber'
 import { fromCents, calcVatCents, VAT_RATE_PERCENT } from '../utils/money'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 import { generateInvoicePDF, PdfInvoiceData } from '../services/pdf'
 import { CreateInvoiceSchema, SendInvoiceSchema } from '@invoicekasi/shared'
 import type { CreateInvoice, SendInvoice, InvoiceResponse, SendInvoiceResponse } from '@invoicekasi/shared'
@@ -87,7 +88,7 @@ router.get('/:id/public', async (req: Request, res) => {
   const t = req.query['t'] as string | undefined
 
   if (!t) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -104,7 +105,7 @@ router.get('/:id/public', async (req: Request, res) => {
     .limit(1)
 
   if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -172,7 +173,7 @@ router.get('/:id/public/pdf', async (req: Request, res) => {
   const t = req.query['t'] as string | undefined
 
   if (!t) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -189,7 +190,7 @@ router.get('/:id/public/pdf', async (req: Request, res) => {
     .limit(1)
 
   if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -234,7 +235,7 @@ router.get('/:id/public/pdf', async (req: Request, res) => {
     res.send(buffer)
   } catch (err) {
     console.error('PDF generation failed:', err)
-    res.status(500).json({ error: 'Failed to generate PDF' })
+    apiError(res, 500, 'Failed to generate PDF', 'PDF_GENERATION_FAILED')
   }
 })
 
@@ -255,7 +256,7 @@ router.get('/:id/pdf', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -300,7 +301,7 @@ router.get('/:id/pdf', async (req: AuthRequest, res) => {
     res.send(buffer)
   } catch (err) {
     console.error('PDF generation failed:', err)
-    res.status(500).json({ error: 'Failed to generate PDF' })
+    apiError(res, 500, 'Failed to generate PDF', 'PDF_GENERATION_FAILED')
   }
 })
 
@@ -366,7 +367,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -432,7 +433,7 @@ router.post('/', validateBody(InvoiceBodySchema), async (req: AuthRequest, res) 
     .limit(1)
 
   if (!ownedClient) {
-    res.status(400).json({ error: 'Client not found or does not belong to you' })
+    apiError(res, 400, 'Client not found or does not belong to you', 'CLIENT_NOT_FOUND')
     return
   }
 
@@ -491,10 +492,7 @@ router.post('/', validateBody(InvoiceBodySchema), async (req: AuthRequest, res) 
     res.status(201).json(payload)
   } catch (err) {
     if (err instanceof InvoiceLimitReachedError) {
-      res.status(403).json({
-        error: 'Free plan limited to 10 invoices per month. Upgrade to Premium for unlimited invoicing.',
-        code: 'INVOICE_LIMIT_REACHED',
-      })
+      apiError(res, 403, 'Free plan limited to 10 invoices per month. Upgrade to Premium for unlimited invoicing.', 'INVOICE_LIMIT_REACHED')
       return
     }
     throw err
@@ -515,12 +513,12 @@ router.put('/:id', validateBody(InvoiceBodySchema), async (req: AuthRequest, res
     .limit(1)
 
   if (!existing) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
   if (existing.status !== 'draft') {
-    res.status(400).json({ error: 'Only draft invoices can be edited' })
+    apiError(res, 400, 'Only draft invoices can be edited', 'INVOICE_NOT_EDITABLE')
     return
   }
 
@@ -534,7 +532,7 @@ router.put('/:id', validateBody(InvoiceBodySchema), async (req: AuthRequest, res
     .limit(1)
 
   if (!ownedClient) {
-    res.status(400).json({ error: 'Client not found or does not belong to you' })
+    apiError(res, 400, 'Client not found or does not belong to you', 'CLIENT_NOT_FOUND')
     return
   }
 
@@ -601,12 +599,12 @@ router.delete('/:id', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!existing) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
   if (existing.status !== 'draft') {
-    res.status(400).json({ error: 'Only draft invoices can be deleted' })
+    apiError(res, 400, 'Only draft invoices can be deleted', 'INVOICE_NOT_DELETABLE')
     return
   }
 
@@ -629,18 +627,18 @@ router.post('/:id/send', validateBody(SendInvoiceSchema), async (req: AuthReques
     .limit(1)
 
   if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
   if (invoice.status !== 'draft' && invoice.status !== 'sent') {
-    res.status(400).json({ error: 'Invoice cannot be sent in its current status' })
+    apiError(res, 400, 'Invoice cannot be sent in its current status', 'INVOICE_NOT_SENDABLE')
     return
   }
 
   // ── Send debounce (5 s) ──────────────────────────────────────────────────────
   if (invoice.lastSendAttemptAt && Date.now() - invoice.lastSendAttemptAt.getTime() < 5000) {
-    res.status(429).json({ error: 'Send debounced — please wait a few seconds', code: 'SEND_DEBOUNCED' })
+    apiError(res, 429, 'Send debounced — please wait a few seconds', 'SEND_DEBOUNCED')
     return
   }
 
@@ -774,7 +772,7 @@ router.post('/:id/revoke-public-link', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!existing) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -799,7 +797,7 @@ router.post('/:id/refresh-public-link', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!existing) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
@@ -828,17 +826,17 @@ router.post('/:id/convert', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!quote) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 
   if (quote.type !== 'quote') {
-    res.status(400).json({ error: 'Only quotes can be converted to invoices' })
+    apiError(res, 400, 'Only quotes can be converted to invoices', 'NOT_A_QUOTE')
     return
   }
 
   if (quote.convertedToInvoiceId) {
-    res.status(400).json({ error: 'This quote has already been converted', code: 'ALREADY_CONVERTED' })
+    apiError(res, 400, 'This quote has already been converted', 'ALREADY_CONVERTED')
     return
   }
 
@@ -913,10 +911,7 @@ router.post('/:id/convert', async (req: AuthRequest, res) => {
     res.status(201).json(payload)
   } catch (err) {
     if (err instanceof InvoiceLimitReachedError) {
-      res.status(403).json({
-        error: 'Free plan limited to 10 invoices per month. Upgrade to Premium for unlimited invoicing.',
-        code: 'INVOICE_LIMIT_REACHED',
-      })
+      apiError(res, 403, 'Free plan limited to 10 invoices per month. Upgrade to Premium for unlimited invoicing.', 'INVOICE_LIMIT_REACHED')
       return
     }
     throw err
@@ -936,7 +931,7 @@ router.post('/:id/mark-paid', async (req: AuthRequest, res) => {
     .limit(1)
 
   if (!existing) {
-    res.status(404).json({ error: 'Invoice not found' })
+    apiError(res, 404, 'Invoice not found', 'INVOICE_NOT_FOUND')
     return
   }
 

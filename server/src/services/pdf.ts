@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 

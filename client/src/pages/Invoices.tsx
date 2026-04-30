@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, CheckCircle } from 'lucide-react'
 import api from '../api/client'
@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge'
 import type { InvoiceStatus } from '../components/StatusBadge'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import EmptyState from '../components/EmptyState'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -78,11 +78,7 @@ export default function Invoices() {
   const [totalPages, setTotalPages] = useState(1)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  useEffect(() => {
-    loadPage(activeTab, 1, true)
-  }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function loadPage(tab: TabId, pg: number, replace: boolean) {
+  const loadPage = useCallback(async (tab: TabId, pg: number, replace: boolean) => {
     if (replace) {
       setInvoiceList([])
       setLoading(true)
@@ -104,7 +100,11 @@ export default function Invoices() {
       setLoading(false)
       setLoadingMore(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadPage(activeTab, 1, true)
+  }, [activeTab, loadPage])
 
   const empty = EMPTY[activeTab]
 

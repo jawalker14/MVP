@@ -229,6 +229,20 @@ export const DashboardStatsSchema = z.object({
   total_clients: z.number(),
 })
 
+// ─── Error Envelope ───────────────────────────────────────────────────────────
+
+export interface ApiError {
+  error: string
+  code?: string
+  details?: Array<{ path: string; message: string }>
+}
+
+export const ApiErrorSchema = z.object({
+  error: z.string(),
+  code: z.string().optional(),
+  details: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
+})
+
 // ─── Inferred Types ───────────────────────────────────────────────────────────
 
 export type RequestMagicLink = z.infer<typeof RequestMagicLinkSchema>

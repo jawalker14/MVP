@@ -9,13 +9,13 @@ import {
   Loader2,
   Mail,
 } from 'lucide-react'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import PageHeader from '../components/PageHeader'
 import ConfirmModal from '../components/ConfirmModal'
 import LoadingSkeleton from '../components/LoadingSkeleton'
-import { formatZAR } from '../utils/formatZAR'
+import { formatZAR } from '@invoicekasi/shared'
 
 // ─── Style constants ──────────────────────────────────────────────────────────
 
@@ -268,7 +268,7 @@ function Step1SelectClient({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [query]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query]) // eslint-disable-line react-hooks/exhaustive-deps -- query is the only reactive dep; initialLoadDone intentionally excluded to avoid re-triggering search when the first-load flag flips
 
   async function handleAddClient() {
     const errs: typeof newErrors = {}
@@ -292,8 +292,7 @@ function Step1SelectClient({
       })
       dispatch({ type: 'GO_TO_STEP', step: 2 })
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      showToast(e?.response?.data?.error ?? 'Could not add client', 'error')
+      showToast(extractApiError(err).error, 'error')
     } finally {
       setSaving(false)
     }
@@ -995,8 +994,7 @@ export default function InvoiceNew() {
         showToast('Invoice sent!', 'success')
         navigate(`/invoices/${invoice.id}`)
       } catch (err: unknown) {
-        const e = err as { response?: { data?: { error?: string } } }
-        showToast(e?.response?.data?.error ?? 'Something went wrong', 'error')
+        showToast(extractApiError(err).error, 'error')
         dispatch({ type: 'SET_SUBMITTING', value: false })
       }
     },

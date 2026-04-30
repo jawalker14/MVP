@@ -1,15 +1,7 @@
 import { db } from '../db'
 import { invoices } from '../db/schema'
 import { eq, and, inArray, isNotNull, sql } from 'drizzle-orm'
-
-/** Compute "today" in Africa/Johannesburg as YYYY-MM-DD. */
-function todayInSAST(): string {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Johannesburg',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  })
-  return fmt.format(new Date())
-}
+import { todayInSAST } from '../utils/dates'
 
 export async function flagOverdueForUser(userId: string): Promise<number> {
   const today = todayInSAST()

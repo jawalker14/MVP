@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import api from '../api/client'
+import api, { extractApiError } from '../api/client'
 import { useApi } from '../hooks/useApi'
 import PageHeader from '../components/PageHeader'
 import LoadingSkeleton from '../components/LoadingSkeleton'
@@ -86,9 +86,8 @@ export default function ClientEdit() {
       showToast('Client saved', 'success')
       navigate('/clients')
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { error?: string } } }
-      const status = e?.response?.status
-      const message = e?.response?.data?.error ?? 'Something went wrong'
+      const { error: message } = extractApiError(err)
+      const status = (err as any)?.response?.status
       if (status === 409) {
         setErrors({ phoneWhatsapp: message })
       } else {

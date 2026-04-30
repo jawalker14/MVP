@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { users } from '../db/schema'
+import { startOfCurrentMonthUTC } from './dates'
 
 const FREE_INVOICE_LIMIT = 10
 
@@ -29,8 +30,7 @@ export async function consumeInvoiceCredit(tx: any, userId: string): Promise<Cre
   if (!user) return { ok: false, reason: 'limit_reached' }
   if (user.plan !== 'free') return { ok: true }
 
-  const now = new Date()
-  const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  const startOfMonth = startOfCurrentMonthUTC()
 
   let count = user.invoiceCountThisMonth ?? 0
   let resetAt = user.invoiceCountResetAt
