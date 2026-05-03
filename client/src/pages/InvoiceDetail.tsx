@@ -160,7 +160,7 @@ export default function InvoiceDetail() {
         vatEnabled: invoice.vatRate > 0,
         dueDate,
         notes: invoice.notes ?? null,
-        lineItems: invoice.lineItems.map((item, idx) => ({
+        lineItems: invoice.lineItems.map((item: InvoiceResponse['lineItems'][number], idx: number) => ({
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -410,7 +410,7 @@ export default function InvoiceDetail() {
 
         {/* Line items */}
         <div className="flex flex-col gap-3">
-          {invoice.lineItems.map((item) => (
+          {invoice.lineItems.map((item: InvoiceResponse['lineItems'][number]) => (
             <div key={item.id} className="flex justify-between items-start gap-3">
               <div className="min-w-0">
                 <p className="text-text-primary text-sm font-medium">{item.description}</p>

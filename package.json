@@ -5,14 +5,16 @@
   "workspaces": ["client", "server", "shared"],
   "scripts": {
     "dev": "concurrently --names client,server --prefix-colors cyan,yellow \"npm run dev --prefix client\" \"npm run dev --prefix server\"",
-    "build": "npm run build --prefix client && npm run build --prefix server",
+    "build": "npm run build --workspace=shared && npm run build --workspace=client && npm run build --workspace=server",
+    "postinstall": "npm run build --workspace=shared",
+    "generate-icons": "node scripts/generate-icons.js",
     "start": "NODE_ENV=production node server/dist/index.js",
     "db:push": "npm run db:migrate --prefix server",
     "db:studio": "npm run db:studio --prefix server",
     "check:money": "ts-node --transpile-only --project server/tsconfig.json scripts/check-money.ts"
   },
   "engines": {
-    "node": ">=20.10.0 <23.0.0"
+    "node": ">=20 <21"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

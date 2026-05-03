@@ -5,13 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node ../scripts/generate-icons.js || echo 'Icon generation skipped'",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "engines": {
-    "node": ">=20.10.0 <23.0.0"
+    "node": ">=20 <21"
   },
   "dependencies": {
     "@invoicekasi/shared": "*",

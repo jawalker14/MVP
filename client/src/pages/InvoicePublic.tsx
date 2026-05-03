@@ -202,7 +202,7 @@ export default function InvoicePublic() {
           </div>
 
           {/* Item rows */}
-          {invoice.lineItems.map((item) => (
+          {invoice.lineItems.map((item: InvoiceResponse['lineItems'][number]) => (
             <div
               key={item.id}
               className="grid text-sm px-3 py-2.5 border-b border-gray-100 last:border-0"
