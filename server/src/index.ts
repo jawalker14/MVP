@@ -78,7 +78,10 @@ const r2Origin = (() => {
 // ─── CORS allow-list (computed once at module scope) ─────────────────────────
 
 const corsStaticOrigins = new Set(
-  [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean) as string[],
+  (process.env.NODE_ENV === 'production'
+    ? [process.env.CLIENT_URL]
+    : [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000']
+  ).filter(Boolean) as string[],
 )
 
 const vercelPrefixPattern: RegExp | null = (() => {
