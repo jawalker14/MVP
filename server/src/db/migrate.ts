@@ -19,15 +19,15 @@ export async function runMigrations(): Promise<void> {
   const prepare = !isPooler
 
   const migrationClient = postgres(DATABASE_URL, { ssl, prepare, max: 1 })
-  const db = drizzle(migrationClient)
-
-  console.log('Running migrations...')
-  await migrate(db, {
-    migrationsFolder: path.resolve(__dirname, './migrations'),
-  })
-  console.log('Migrations complete.')
-
-  await migrationClient.end()
+  try {
+    console.log('Running migrations...')
+    await migrate(drizzle(migrationClient), {
+      migrationsFolder: path.resolve(__dirname, './migrations'),
+    })
+    console.log('Migrations complete.')
+  } finally {
+    await migrationClient.end()
+  }
 }
 
 if (require.main === module) {

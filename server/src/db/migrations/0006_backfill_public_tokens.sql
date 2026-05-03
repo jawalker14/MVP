@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 UPDATE "invoices"
 SET
   "public_token" = encode(gen_random_bytes(20), 'hex'),

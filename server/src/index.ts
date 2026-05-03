@@ -14,6 +14,7 @@ import clientsRouter from './routes/clients'
 import invoicesRouter from './routes/invoices'
 import dashboardRouter from './routes/dashboard'
 import webhooksRouter from './routes/webhooks'
+import { runMigrations } from './db/migrate'
 
 const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'CLIENT_URL', 'R2_PUBLIC_BASE_URL'] as const
 
@@ -198,22 +199,33 @@ app.use((err: Error & { code?: string }, _req: express.Request, res: express.Res
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`InvoiceKasi API running on http://0.0.0.0:${PORT}`)
-})
-
-// Graceful shutdown — Railway sends SIGTERM before cycling a container
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received — closing HTTP server')
-  server.close(() => {
-    console.log('HTTP server closed')
-    process.exit(0)
-  })
-})
-
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection:', reason)
   process.exit(1)
 })
+
+async function main() {
+  try {
+    await runMigrations()
+  } catch (err) {
+    console.error('FATAL: Migration failed:', err)
+    process.exit(1)
+  }
+
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`InvoiceKasi API running on http://0.0.0.0:${PORT}`)
+  })
+
+  // Graceful shutdown — Railway sends SIGTERM before cycling a container
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received — closing HTTP server')
+    server.close(() => {
+      console.log('HTTP server closed')
+      process.exit(0)
+    })
+  })
+}
+
+main()
 
 export default app
