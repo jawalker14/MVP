@@ -77,22 +77,18 @@ const r2Origin = (() => {
 
 // ─── CORS allow-list (computed once at module scope) ─────────────────────────
 
-const corsStaticOrigins = new Set(
-  (process.env.NODE_ENV === 'production'
-    ? [process.env.CLIENT_URL]
-    : [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000']
-  ).filter(Boolean) as string[],
-)
+const corsStaticOrigins = new Set([
+  ...(process.env.CLIENT_URL ?? '')
+    .split(',')
+    .map(s => s.trim().replace(/\/$/, ''))
+    .filter(Boolean),
+  ...(process.env.NODE_ENV !== 'production'
+    ? ['http://localhost:5173', 'http://localhost:3000']
+    : []),
+])
 
-const vercelPrefixPattern: RegExp | null = (() => {
-  const prefix = process.env.VERCEL_PROJECT_PREFIX
-  if (!prefix) return null
-  const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  // Matches: {prefix}.vercel.app  AND  {prefix}-<branch-or-hash>.vercel.app
-  return new RegExp(
-    `^https://${esc}(-[a-z0-9-]+)?-[a-z0-9-]+\\.vercel\\.app$|^https://${esc}\\.vercel\\.app$`,
-  )
-})()
+// Covers per-deployment immutable URLs and git branch aliases for this project.
+const vercelDeploymentPattern = /^https:\/\/mvp-[a-z0-9-]+-jack-walkers-projects-cf5e24a0\.vercel\.app$/
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001', 10)
@@ -103,6 +99,21 @@ const IS_PROD = process.env.NODE_ENV === 'production'
 app.set('trust proxy', 1)
 
 // ─── Security middleware ──────────────────────────────────────────────────────
+
+// cors() must run before helmet() so OPTIONS preflights are handled first.
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true)
+      if (corsStaticOrigins.has(origin) || vercelDeploymentPattern.test(origin)) {
+        return callback(null, true)
+      }
+      console.warn('[CORS] Rejected origin:', origin)
+      callback(new Error('Not allowed by CORS'))
+    },
+    credentials: true,
+  }),
+)
 
 app.use(
   helmet({
@@ -119,19 +130,6 @@ app.use(
         upgradeInsecureRequests: IS_PROD ? [] : null,
       },
     },
-  }),
-)
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      const allowed =
-        !origin ||
-        corsStaticOrigins.has(origin) ||
-        (vercelPrefixPattern !== null && vercelPrefixPattern.test(origin))
-      allowed ? callback(null, true) : callback(new Error('Not allowed by CORS'))
-    },
-    credentials: true,
   }),
 )
 
