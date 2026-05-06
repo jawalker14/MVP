@@ -123,7 +123,10 @@ router.post(
 
       await db.insert(magicLinks).values({ email, tokenHash, expiresAt })
 
-      const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173'
+      const clientUrl = (process.env.CLIENT_URL ?? 'http://localhost:5173')
+        .split(',')[0]
+        .trim()
+        .replace(/\/$/, '')
       const magicLinkUrl = `${clientUrl}/auth/verify?token=${raw}&email=${encodeURIComponent(email)}`
 
       // Always log as a fallback
@@ -133,8 +136,9 @@ router.post(
       if (resendKey) {
         try {
           const resend = new Resend(resendKey)
-          await resend.emails.send({
-            from: 'InvoiceKasi <hello@invoicekasi.co.za>',
+          const fromAddress = process.env.EMAIL_FROM ?? 'InvoiceKasi <onboarding@resend.dev>'
+          const { data, error } = await resend.emails.send({
+            from: fromAddress,
             to: email,
             subject: 'Your InvoiceKasi login link',
             html: `
@@ -144,8 +148,13 @@ router.post(
               <p style="color:#94a3b8;font-size:12px;margin-top:24px;">If you didn't request this, you can safely ignore this email.</p>
             `,
           })
+          if (error) {
+            console.error('Resend rejected the send:', JSON.stringify(error))
+          } else {
+            console.log(`✉️  Resend accepted email for ${email} (id=${data?.id})`)
+          }
         } catch (err) {
-          console.error('Resend email failed:', err)
+          console.error('Resend threw an exception:', err)
           // Don't block the user — fall through to 200 response
         }
       }
